@@ -33,6 +33,9 @@ async function load() {
   }
   const s = data.signature;
   const signedDate = new Date(s.signed_at).toLocaleString('id-ID', { dateStyle: 'long', timeStyle: 'short' });
+  const driveLinkHtml = s.drive_view_link
+    ? `<a class="download" href="${s.drive_view_link}" target="_blank">Buka di Google Drive &rarr;</a><br>`
+    : '';
   card.innerHTML = `
     <div class="valid-badge">✓ Tanda Tangan Valid</div>
     <h1>Detail Dokumen Tertandatangani</h1>
@@ -41,7 +44,8 @@ async function load() {
     <div class="field"><label>Departemen</label><span>${s.department}</span></div>
     <div class="field"><label>Ditandatangani oleh</label><span>${s.signer_name} (${s.signer_department || '-'})</span></div>
     <div class="field"><label>Waktu Tanda Tangan</label><span>${signedDate}</span></div>
-    <a class="download" href="/signed/${s.signed_filename}" target="_blank">Lihat Dokumen Asli &rarr;</a>
+    ${driveLinkHtml}
+    <a class="download" href="/signed/${s.signed_filename}" target="_blank">Lihat Dokumen (server) &rarr;</a>
   `;
 }
 load();

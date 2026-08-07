@@ -1,0 +1,90 @@
+{
+  "users": [
+    {
+      "id": 1,
+      "username": "admin",
+      "password_hash": "$2b$10$3RfqnDeiKHwhGSLYL5jR3.ZbxW288WHOnW9seSto3reASwlr/qnEy",
+      "full_name": "Administrator",
+      "department": "QA",
+      "role": "admin",
+      "created_at": "2026-08-07T12:44:57.070Z"
+    }
+  ],
+  "documents": [
+    {
+      "id": "00bd8429-6165-4b92-a197-d05bbf028b66",
+      "doc_name": "Data Recovery Time Kelas B - Juni 2026",
+      "doc_number": "PQ.111.22",
+      "department": "QA",
+      "file_type": "pdf",
+      "original_filename": "Recovery Kelas B 12 Juni 26.pdf",
+      "stored_filename": "2202406b-9a41-46a8-aeae-e6810b63b323.pdf",
+      "uploaded_by": 1,
+      "page_width": 595.2756,
+      "page_height": 841.8898,
+      "created_at": "2026-08-07T13:02:47.650Z",
+      "status": "signed",
+      "signed_filename": "fec47e5d-269b-47df-b0d4-8a0ade16db03.pdf",
+      "drive_file_id": "1pOUlza9_-5EvtddXBnBszF04HTwHjmpY",
+      "drive_view_link": "https://drive.google.com/file/d/1pOUlza9_-5EvtddXBnBszF04HTwHjmpY/view?usp=drivesdk"
+    },
+    {
+      "id": "16268765-188a-4046-8f2b-f0b9ca5bbdc4",
+      "doc_name": "Foto 123",
+      "doc_number": "POS.1",
+      "department": "QA",
+      "file_type": "image",
+      "original_filename": "apt.jpg",
+      "stored_filename": "cdfc25f5-60d7-4b77-9532-05a522a476e5.jpg",
+      "uploaded_by": 1,
+      "page_width": null,
+      "page_height": null,
+      "created_at": "2026-08-07T13:08:51.503Z",
+      "status": "signed",
+      "signed_filename": "0494a8b5-de33-40b1-894f-19465462258b.jpg",
+      "drive_file_id": "1IlqTriY980YxMYxTr8tgAFz8vbqEI6Mo",
+      "drive_view_link": "https://drive.google.com/file/d/1IlqTriY980YxMYxTr8tgAFz8vbqEI6Mo/view?usp=drivesdk"
+    },
+    {
+      "id": "953d3e14-122e-414f-8cb9-a4f7f0839b4d",
+      "doc_name": "Partikel Udara",
+      "doc_number": "KP.123",
+      "department": "QA",
+      "file_type": "pdf",
+      "original_filename": "PARTIKEL UDARA PERHITUNGAN SEFA STERIL Juni 2026.pdf",
+      "stored_filename": "ebb76e8c-efb6-43f3-9d24-8447f46abfd1.pdf",
+      "uploaded_by": 1,
+      "page_width": 841.8898,
+      "page_height": 595.2756,
+      "created_at": "2026-08-07T13:10:37.022Z",
+      "status": "pending",
+      "signed_filename": null
+    }
+  ],
+  "signatures": [
+    {
+      "id": "fec47e5d-269b-47df-b0d4-8a0ade16db03",
+      "document_id": "00bd8429-6165-4b92-a197-d05bbf028b66",
+      "signed_by": 1,
+      "qr_x": 0.7,
+      "qr_y": 0.05,
+      "qr_size": 0.12,
+      "page_number": 1,
+      "signed_at": "2026-08-07T13:03:28.104Z"
+    },
+    {
+      "id": "0494a8b5-de33-40b1-894f-19465462258b",
+      "document_id": "16268765-188a-4046-8f2b-f0b9ca5bbdc4",
+      "signed_by": 1,
+      "qr_x": 0.032423208191126277,
+      "qr_y": 0.04603580562659847,
+      "qr_size": 0.08,
+      "page_number": 1,
+      "signed_at": "2026-08-07T13:09:20.934Z"
+    }
+  ],
+  "driveFolders": {
+    "QA": "1ypqqF2NJ6aqkTQVr9iIh8v5WSB8sJTjw"
+  },
+  "_nextUserId": 2
+}
