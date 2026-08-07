@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<title>Dashboard - TTD QR Code</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; background: #f8fafc; margin: 0; color: #0f172a; }
+  header { background: #0f172a; color: white; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; }
+  header h1 { font-size: 16px; margin: 0; }
+  header .who { font-size: 13px; opacity: 0.8; }
+  header button { background: transparent; border: 1px solid #475569; color: white; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+  main { max-width: 900px; margin: 24px auto; padding: 0 16px; }
+  .panel { background: white; border-radius: 10px; padding: 20px; margin-bottom: 20px; border: 1px solid #e2e8f0; }
+  .panel h2 { font-size: 15px; margin: 0 0 16px; }
+  .row { display: flex; gap: 12px; margin-bottom: 12px; }
+  .row > div { flex: 1; }
+  label { font-size: 12px; font-weight: 600; color: #475569; display: block; margin-bottom: 4px; }
+  input, select { width: 100%; padding: 9px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; }
+  button.primary { background: #0f172a; color: white; border: none; padding: 10px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 13px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid #f1f5f9; }
+  th { color: #64748b; font-weight: 600; font-size: 12px; }
+  .badge { padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+  .badge.pending { background: #fef3c7; color: #92400e; }
+  .badge.signed { background: #dcfce7; color: #166534; }
+  a.action { color: #2563eb; text-decoration: none; font-size: 13px; font-weight: 600; }
+  .msg { font-size: 13px; margin-bottom: 12px; padding: 8px 12px; border-radius: 6px; display: none; }
+  .msg.error { background: #fee2e2; color: #991b1b; }
+  .msg.success { background: #dcfce7; color: #166534; }
+</style>
+</head>
+<body>
+<header>
+  <h1>TTD Elektronik QR Code — PT REMS</h1>
+  <div style="display:flex; align-items:center; gap:12px;">
+    <span class="who" id="whoami"></span>
+    <button onclick="logout()">Keluar</button>
+  </div>
+</header>
+<main>
+  <div class="panel">
+    <h2>Upload Dokumen Baru</h2>
+    <div class="msg" id="uploadMsg"></div>
+    <form id="uploadForm">
+      <div class="row">
+        <div>
+          <label>Nama Dokumen</label>
+          <input type="text" id="doc_name" required placeholder="cth. SOP Pembersihan Ruang Steril">
+        </div>
+        <div>
+          <label>Nomor Dokumen</label>
+          <input type="text" id="doc_number" required placeholder="cth. SOP/QA/001">
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label>Departemen</label>
+          <input type="text" id="department" required placeholder="cth. QA">
+        </div>
+        <div>
+          <label>File (PDF / JPG / PNG)</label>
+          <input type="file" id="file" accept=".pdf,.jpg,.jpeg,.png" required>
+        </div>
+      </div>
+      <button type="submit" class="primary">Upload</button>
+    </form>
+  </div>
+
+  <div class="panel">
+    <h2>Daftar Dokumen</h2>
+    <table>
+      <thead>
+        <tr><th>Nama Dokumen</th><th>No. Dokumen</th><th>Departemen</th><th>Diupload oleh</th><th>Status</th><th></th></tr>
+      </thead>
+      <tbody id="docList"></tbody>
+    </table>
+  </div>
+</main>
+<script>
+async function checkAuth() {
+  const res = await fetch('/api/me');
+  const data = await res.json();
+  if (!data.user) { window.location.href = '/'; return; }
+  document.getElementById('whoami').textContent = `${data.user.full_name} (${data.user.username})`;
+}
+async function logout() {
+  await fetch('/api/logout', { method: 'POST' });
+  window.location.href = '/';
+}
+function showMsg(el, text, type) {
+  el.textContent = text; el.className = 'msg ' + type; el.style.display = 'block';
+}
+
+document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const msgEl = document.getElementById('uploadMsg');
+  const fd = new FormData();
+  fd.append('doc_name', document.getElementById('doc_name').value);
+  fd.append('doc_number', document.getElementById('doc_number').value);
+  fd.append('department', document.getElementById('department').value);
+  fd.append('file', document.getElementById('file').files[0]);
+  try {
+    const res = await fetch('/api/documents', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    showMsg(msgEl, 'Dokumen berhasil diupload. Silakan lanjut ke penempatan QR.', 'success');
+    document.getElementById('uploadForm').reset();
+    loadDocs();
+  } catch (err) {
+    showMsg(msgEl, err.message, 'error');
+  }
+});
+
+async function loadDocs() {
+  const res = await fetch('/api/documents');
+  const data = await res.json();
+  const tbody = document.getElementById('docList');
+  tbody.innerHTML = '';
+  data.documents.forEach(doc => {
+    const tr = document.createElement('tr');
+    const statusBadge = doc.status === 'signed'
+      ? '<span class="badge signed">Sudah TTD</span>'
+      : '<span class="badge pending">Menunggu TTD</span>';
+    const action = doc.status === 'signed'
+      ? `<a class="action" href="#" onclick="viewSigned('${doc.id}'); return false;">Lihat</a>`
+      : `<a class="action" href="/sign.html?id=${doc.id}">Tandatangani</a>`;
+    tr.innerHTML = `<td>${doc.doc_name}</td><td>${doc.doc_number}</td><td>${doc.department}</td><td>${doc.uploaded_by_name}</td><td>${statusBadge}</td><td>${action}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+async function viewSigned(docId) {
+  const res = await fetch(`/api/documents/${docId}/signature`);
+  const data = await res.json();
+  if (!res.ok) { alert(data.error); return; }
+  window.location.href = `/verify/${data.signatureId}`;
+}
+
+checkAuth();
+loadDocs();
+</script>
+</body>
+</html>
