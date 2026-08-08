@@ -111,15 +111,18 @@ Restart aplikasi. Selesai — setiap dokumen yang ditandatangani sekarang otomat
 3. Klik **Create Database** (atau **Browse Marketplace** kalau tidak muncul langsung), cari **Upstash** / **Redis**
 4. Pilih paket gratis (Free/Hobby), pilih region (pilih yang terdekat, mis. Singapore)
 5. Klik **Connect** ke project `qr-signature-app` Anda
-6. Vercel akan **otomatis mengisi** environment variable `KV_REST_API_URL` dan `KV_REST_API_TOKEN` ke project Anda — Anda tidak perlu copy-paste apapun secara manual
+6. Vercel akan **otomatis mengisi** environment variable terkait (nama persisnya bisa `KV_REST_API_URL`/`KV_REST_API_TOKEN`, atau diberi awalan seperti `NAMA_KV_REST_API_URL` — dua-duanya otomatis terdeteksi oleh aplikasi, tidak perlu diubah manual)
 
 Setelah ini aktif, **semua data (user, dokumen, tanda tangan) akan konsisten** di semua instance Vercel — masalah "kadang muncul kadang tidak" akan hilang.
 
+**Cara memverifikasi ini benar-benar aktif** (jangan lewatkan langkah ini): buka dashboard Vercel project Anda → tab **Logs** (atau **Runtime Logs**) → cari baris yang diawali `[DB] Backend aktif: ...`. Kalau tulisannya **"Upstash Redis"**, berarti sudah benar. Kalau tulisannya **"file lokal"** disertai peringatan, berarti env var-nya belum kedeteksi — screenshot baris log itu dan kirim ke saya untuk didiagnosis lebih lanjut.
+
 ### Langkah B: Set BASE_URL dengan benar (supaya QR tidak mengarah ke localhost)
-Ini yang sering kelewat: environment variable harus diisi **khusus untuk environment "Production"**, bukan cuma "Development".
+Ini yang sering kelewat: environment variable harus diisi **khusus untuk environment "Production"**, bukan cuma "Development", dan **wajib pakai `https://` di depan**.
 
 1. Di dashboard Vercel project Anda, buka **Settings > Environment Variables**
 2. Cari (atau tambah) `BASE_URL`
+3. Isi dengan **`https://qr-signature-app.vercel.app`** (ganti sesuai domain Anda) — pastikan ada `https://`-nya, bukan cuma domainnya saja
 3. **Pastikan dicentang untuk "Production"** (bukan cuma Preview/Development)
 4. Isi dengan domain production Anda yang sebenarnya, contoh: `https://qr-signature-app.vercel.app` (tanpa `/` di akhir — cek domain persis di tab **Domains**)
 5. Lakukan hal yang sama untuk `SESSION_SECRET` dan semua `GDRIVE_*` — pastikan semuanya dicentang untuk Production
@@ -215,10 +218,10 @@ Login sebagai admin, buka halaman **Kelola User & Departemen**, klik **"Reset Pa
 ## Struktur Data
 
 - **Data (user, dokumen, tanda tangan):** disimpan di **Upstash Redis** kalau berjalan di Vercel dengan Storage sudah dikonek (lihat Tahap 1, Langkah A) — ini sumber data terpusat yang konsisten di semua instance. Kalau Upstash belum dikonek (mis. saat testing lokal), otomatis fallback ke file `data/store.json` — cukup untuk lokal/server kantor (satu proses saja yang selalu nyala), **tapi tidak cukup untuk Vercel** karena filesystem-nya tidak dibagi antar-instance.
-- `uploads/` — file asli yang diupload (belum ditandatangani). Di Vercel ini tersimpan sementara di `/tmp` (khusus untuk generate preview saat proses tanda tangan) — di server kantor, tersimpan permanen di folder project.
-- `signed/` — file hasil setelah QR di-embed (inilah yang dibuka publik lewat link verifikasi, dan yang dikirim ke Google Drive)
+- **File dokumen (asli & hasil TTD):** kalau Google Drive sudah dikonfigurasi, file **langsung tersimpan ke Drive** — dokumen asli begitu diupload (diberi nama awalan "ASLI - "), dan versi ber-QR setiap kali ditandatangani. Folder `uploads/` dan `signed/` di project ini hanya dipakai sebagai **tempat kerja sementara** selama satu proses berlangsung (baca: bukan tempat penyimpanan permanen) — aplikasi tidak pernah mengandalkan file yang tertinggal dari request sebelumnya, semua selalu diambil ulang dari Drive. Ini sengaja dibuat begini karena di Vercel, file di disk lokal **tidak terjamin** masih ada di request berikutnya.
+- Kalau Google Drive **belum** dikonfigurasi (mis. saat testing lokal cepat tanpa setup Drive), aplikasi otomatis fallback pakai folder `uploads/`/`signed/` lokal sebagai penyimpanan biasa — cukup untuk lokal/server kantor, cukup mirip prinsipnya dengan fallback database di atas.
 
-Catatan: kalau nanti pindah ke server kantor dan tidak mau pakai Upstash (koneksi internet ke luar mungkin dibatasi), aplikasi akan otomatis pakai file `data/store.json` biasa — ini aman karena di server kantor cuma ada 1 proses yang selalu nyala (lewat PM2), beda dengan Vercel yang bisa punya banyak instance sekaligus.
+Catatan: kalau nanti pindah ke server kantor, Google Drive dan Upstash tetap boleh dipakai (tidak wajib dimatikan) — atau matikan saja env variable-nya kalau mau full pakai disk lokal server kantor, aplikasi otomatis menyesuaikan.
 
 ## Catatan Compliance (CPOB)
 Setiap tanda tangan tercatat (siapa, dokumen apa, kapan) — bisa dipakai sebagai audit trail. Untuk kebutuhan yang lebih ketat (mis. tidak bisa dihapus/diedit, log akses, dsb.), beri tahu saya dan saya bisa perkuat lapisan audit trail-nya.

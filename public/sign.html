@@ -51,8 +51,10 @@
     <div class="panel">
       <label>Ukuran QR Code</label>
       <input type="range" id="qrSize" min="5" max="30" value="12">
-      <div class="hint">Geser kotak QR di atas dokumen ke posisi yang diinginkan, sesuaikan ukuran, lalu klik Tandatangani.</div>
+      <div class="hint">Geser kotak QR di atas dokumen ke posisi yang diinginkan, sesuaikan ukuran, lalu klik Tandatangani. Setelah tersimpan, Anda bisa langsung menempel QR lagi di posisi/halaman lain tanpa perlu kembali ke Dashboard dulu.</div>
+      <div class="msg" id="signMsg" style="display:none; margin-top:10px; padding:8px 10px; border-radius:6px; font-size:12px;"></div>
       <button class="primary" id="signBtn" onclick="submitSignature()">Tandatangani Dokumen</button>
+      <button class="primary" id="doneBtn" onclick="window.location.href='/dashboard.html'" style="background:white; color:#0f172a; border:1px solid #cbd5e1; margin-top:8px;">Selesai, Kembali ke Dashboard</button>
     </div>
   </div>
 </main>
@@ -65,6 +67,7 @@ let doc = null;
 let pdfDocProxy = null;
 let currentPage = 1;
 let totalPages = 1;
+let placedThisSession = 0;
 
 // QR box state as fraction of rendered page (0-1)
 let qrFrac = { x: 0.7, y: 0.05, size: 0.12 };
@@ -76,7 +79,7 @@ async function checkAuth() {
   if (!data.user) window.location.href = '/';
 }
 
-async function loadDoc() {
+async function loadDoc(isInitial) {
   const res = await fetch(`/api/documents/${docId}`);
   const data = await res.json();
   if (!res.ok) { document.getElementById('docInfo').textContent = data.error; return; }
@@ -90,19 +93,23 @@ async function loadDoc() {
      <div><b>Departemen:</b> ${doc.department}</div>
      ${ttdInfo}`;
 
+  // cache-bust so the browser always fetches the latest version (with the QR we just added)
+  const freshUrl = doc.current_file_url + (doc.current_file_url.includes('?') ? '&' : '?') + 't=' + Date.now();
+
   if (doc.file_type === 'pdf') {
     document.getElementById('pageCanvas').style.display = 'block';
-    pdfDocProxy = await pdfjsLib.getDocument(doc.current_file_url).promise;
+    pdfDocProxy = await pdfjsLib.getDocument(freshUrl).promise;
     totalPages = pdfDocProxy.numPages;
     document.getElementById('pager').style.display = totalPages > 1 ? 'flex' : 'none';
-    await renderPage(1);
+    const pageToShow = Math.min(currentPage, totalPages);
+    await renderPage(pageToShow);
   } else {
     const img = document.getElementById('imgPreview');
-    img.src = doc.current_file_url;
+    img.src = freshUrl;
     img.style.display = 'block';
     img.onload = () => positionQrBox();
   }
-  setupDrag();
+  if (isInitial) setupDrag(); // only attach drag listeners once - not on every refresh
   updateQrBox();
 }
 
@@ -178,6 +185,7 @@ function setupDrag() {
 
 async function submitSignature() {
   const btn = document.getElementById('signBtn');
+  const msgEl = document.getElementById('signMsg');
   btn.disabled = true;
   btn.textContent = 'Memproses...';
   try {
@@ -193,16 +201,25 @@ async function submitSignature() {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
-    window.location.href = `/verify/${data.signatureId}`;
+    placedThisSession++;
+    msgEl.textContent = `QR ke-${placedThisSession} berhasil ditempel di halaman ${currentPage}. Silakan tempel QR lagi kalau masih ada, atau klik Selesai.`;
+    msgEl.style.background = '#dcfce7';
+    msgEl.style.color = '#166534';
+    msgEl.style.display = 'block';
+    await loadDoc(false); // refresh preview to show the QR we just placed, without re-attaching drag listeners
   } catch (err) {
-    alert(err.message);
+    msgEl.textContent = err.message;
+    msgEl.style.background = '#fee2e2';
+    msgEl.style.color = '#991b1b';
+    msgEl.style.display = 'block';
+  } finally {
     btn.disabled = false;
     btn.textContent = 'Tandatangani Dokumen';
   }
 }
 
 checkAuth();
-loadDoc();
+loadDoc(true);
 </script>
 </body>
 </html>

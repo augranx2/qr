@@ -78,4 +78,15 @@ async function updateSignedDocument({ fileId, filePath, mimeType }) {
   return { fileId: res.data.id, webViewLink: res.data.webViewLink };
 }
 
-module.exports = { isConfigured, uploadSignedDocument, updateSignedDocument };
+/**
+ * Downloads a file's raw bytes from Drive. Used so the app never has to rely on
+ * anything being left over on local disk from a previous request - the file always
+ * comes fresh from Drive, which is the durable source of truth.
+ */
+async function downloadFileBuffer(fileId) {
+  const drive = getDrive();
+  const res = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'arraybuffer' });
+  return Buffer.from(res.data);
+}
+
+module.exports = { isConfigured, uploadSignedDocument, updateSignedDocument, downloadFileBuffer };

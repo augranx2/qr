@@ -191,15 +191,35 @@ app.post('/api/documents', requireLogin, upload.single('file'), async (req, res)
       page_height = firstPage.getHeight();
     }
 
+    // Save the ORIGINAL file straight to Google Drive - the app's own server storage is
+    // only ever used as brief scratch space during a single request, never relied on
+    // across requests (important on Vercel, where local disk isn't shared/persistent).
+    let driveOriginal = null;
+    if (gdrive.isConfigured()) {
+      try {
+        const mimeType = file_type === 'pdf' ? 'application/pdf' : (ext === '.png' ? 'image/png' : 'image/jpeg');
+        driveOriginal = await gdrive.uploadSignedDocument({
+          filePath: req.file.path,
+          fileName: `ASLI - ${doc_number} - ${doc_name}${ext}`,
+          mimeType,
+          department
+        });
+      } catch (e) {
+        console.error('Gagal upload dokumen asli ke Google Drive:', e.message);
+      }
+    }
+
     await db.createDocument({
       id, doc_name, doc_number, department, file_type,
       original_filename: req.file.originalname,
       stored_filename: req.file.filename,
       uploaded_by: req.user.id,
-      page_width, page_height
+      page_width, page_height,
+      drive_original_file_id: driveOriginal ? driveOriginal.fileId : null,
+      drive_original_view_link: driveOriginal ? driveOriginal.webViewLink : null
     });
 
-    res.json({ id, file_type, stored_filename: req.file.filename });
+    res.json({ id, file_type, stored_filename: req.file.filename, driveUploaded: !!driveOriginal });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Gagal memproses dokumen' });
@@ -215,10 +235,38 @@ app.get('/api/documents/:id', requireLogin, async (req, res) => {
   const doc = await db.getDocumentById(req.params.id);
   if (!doc) return res.status(404).json({ error: 'Dokumen tidak ditemukan' });
   const signature_count = await db.getSignatureCountForDocument(doc.id);
-  // If this document already has at least one QR embedded, preview/edit on top of that
-  // version instead of the original upload, so new QR placements don't overlap old ones.
-  const current_file_url = doc.signed_filename ? `/signed/${doc.signed_filename}` : `/uploads/${doc.stored_filename}`;
+  // Preview/edit always goes through our own file-serving route below, which fetches
+  // fresh from Google Drive each time - never assumes anything is still on local disk.
+  const current_file_url = `/api/documents/${doc.id}/file`;
   res.json({ document: { ...doc, signature_count, current_file_url } });
+});
+
+// Serves the document's current file (latest signed version if any, else the original) -
+// always fetched fresh from Google Drive when configured, so it works no matter which
+// Vercel instance handles the request. Falls back to local disk only when Drive isn't set up.
+app.get('/api/documents/:id/file', requireLogin, async (req, res) => {
+  const doc = await db.getDocumentById(req.params.id);
+  if (!doc) return res.status(404).send('Dokumen tidak ditemukan');
+
+  const mimeType = doc.file_type === 'pdf'
+    ? 'application/pdf'
+    : (path.extname(doc.original_filename || '').toLowerCase() === '.png' ? 'image/png' : 'image/jpeg');
+
+  try {
+    const driveFileId = doc.drive_file_id || doc.drive_original_file_id;
+    if (gdrive.isConfigured() && driveFileId) {
+      const buffer = await gdrive.downloadFileBuffer(driveFileId);
+      res.setHeader('Content-Type', mimeType);
+      return res.send(buffer);
+    }
+    // Fallback for local/office-server use without Drive configured
+    const baseDir = doc.signed_filename ? SIGNED_DIR : UPLOAD_DIR;
+    const filename = doc.signed_filename || doc.stored_filename;
+    return res.sendFile(path.join(baseDir, filename));
+  } catch (e) {
+    console.error('Gagal memuat file dokumen:', e.message);
+    res.status(500).send('Gagal memuat file');
+  }
 });
 
 // ---------- SIGNING (place QR + embed) ----------
@@ -239,15 +287,22 @@ app.post('/api/documents/:id/sign', requireLogin, async (req, res) => {
 
     // If this document already has a QR embedded from a previous signature, keep building on
     // top of that version (so QR codes accumulate) instead of starting again from the original.
-    const baseFilename = doc.signed_filename || doc.stored_filename;
-    const baseDir = doc.signed_filename ? SIGNED_DIR : UPLOAD_DIR;
-    const inputPath = path.join(baseDir, baseFilename);
+    // Fetch fresh from Google Drive when available - never assume a previous request's local
+    // file is still around (it may have been written by a different Vercel instance).
+    const sourceDriveFileId = doc.drive_file_id || doc.drive_original_file_id;
+    let sourceBytes;
+    if (gdrive.isConfigured() && sourceDriveFileId) {
+      sourceBytes = await gdrive.downloadFileBuffer(sourceDriveFileId);
+    } else {
+      const baseFilename = doc.signed_filename || doc.stored_filename;
+      const baseDir = doc.signed_filename ? SIGNED_DIR : UPLOAD_DIR;
+      sourceBytes = fs.readFileSync(path.join(baseDir, baseFilename));
+    }
     const outFilename = `${signatureId}${path.extname(doc.stored_filename)}`;
     const outPath = path.join(SIGNED_DIR, outFilename);
 
     if (doc.file_type === 'pdf') {
-      const bytes = fs.readFileSync(inputPath);
-      const pdfDoc = await PDFDocument.load(bytes);
+      const pdfDoc = await PDFDocument.load(sourceBytes);
       const pageIdx = (page_number || 1) - 1;
       const page = pdfDoc.getPages()[pageIdx];
       const pngImage = await pdfDoc.embedPng(qrPngBytes);
@@ -262,7 +317,7 @@ app.post('/api/documents/:id/sign', requireLogin, async (req, res) => {
     } else {
       // Image documents: composite QR onto the image using sharp
       const sharpLib = require('sharp');
-      const base = sharpLib(inputPath);
+      const base = sharpLib(sourceBytes);
       const meta = await base.metadata();
       const qrSizePx = Math.round(qr_size * meta.width);
       const resizedQr = await sharpLib(qrPngBytes).resize(qrSizePx, qrSizePx).toBuffer();

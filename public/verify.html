@@ -15,13 +15,30 @@
   .field span { font-size: 15px; }
   a.download { display: inline-block; margin-top: 16px; color: #2563eb; font-weight: 600; text-decoration: none; font-size: 14px; }
   .error { color: #dc2626; text-align: center; padding: 40px 0; }
+  .internal-nav { max-width: 480px; margin: 0 auto 12px; display: none; gap: 16px; font-size: 13px; }
+  .internal-nav a { color: #475569; text-decoration: none; font-weight: 600; }
 </style>
 </head>
 <body>
+<div class="internal-nav" id="internalNav">
+  <a href="/dashboard.html">&larr; Kembali ke Dashboard</a>
+  <a href="#" id="signAgainLink">+ Tambah TTD Lagi di Dokumen Ini</a>
+</div>
 <div class="card" id="card">Memuat...</div>
 <script>
 const parts = window.location.pathname.split('/');
 const signatureId = parts[parts.length - 1];
+
+async function checkInternalNav(documentId) {
+  try {
+    const res = await fetch('/api/me');
+    const data = await res.json();
+    if (data.user) {
+      document.getElementById('internalNav').style.display = 'flex';
+      document.getElementById('signAgainLink').href = `/sign.html?id=${documentId}`;
+    }
+  } catch (e) { /* not logged in / public viewer - leave nav hidden */ }
+}
 
 async function load() {
   const res = await fetch(`/api/verify/${signatureId}`);
@@ -32,10 +49,11 @@ async function load() {
     return;
   }
   const s = data.signature;
+  checkInternalNav(s.document_id);
   const signedDate = new Date(s.signed_at).toLocaleString('id-ID', { dateStyle: 'long', timeStyle: 'short' });
-  const driveLinkHtml = s.drive_view_link
-    ? `<a class="download" href="${s.drive_view_link}" target="_blank">Buka di Google Drive &rarr;</a><br>`
-    : '';
+  const fileLinkHtml = s.drive_view_link
+    ? `<a class="download" href="${s.drive_view_link}" target="_blank">Buka Dokumen di Google Drive &rarr;</a>`
+    : (s.signed_filename ? `<a class="download" href="/signed/${s.signed_filename}" target="_blank">Lihat Dokumen &rarr;</a>` : '');
   card.innerHTML = `
     <div class="valid-badge">✓ Tanda Tangan Valid</div>
     <h1>Detail Dokumen Tertandatangani</h1>
@@ -44,8 +62,7 @@ async function load() {
     <div class="field"><label>Departemen</label><span>${s.department}</span></div>
     <div class="field"><label>Ditandatangani oleh</label><span>${s.signer_name} (${s.signer_department || '-'})</span></div>
     <div class="field"><label>Waktu Tanda Tangan</label><span>${signedDate}</span></div>
-    ${driveLinkHtml}
-    <a class="download" href="/signed/${s.signed_filename}" target="_blank">Lihat Dokumen (server) &rarr;</a>
+    ${fileLinkHtml}
   `;
 }
 load();
