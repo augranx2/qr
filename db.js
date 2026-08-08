@@ -351,6 +351,22 @@ module.exports = {
     store.departments = store.departments.filter(d => d !== name);
     persistFileStore();
   },
+  // Replaces the ENTIRE department list with the standard 11 full-name departments -
+  // for deployments that were seeded before this list existed (old short names like
+  // "QA"/"Produksi"). Existing documents keep whatever department name they already
+  // have; this only changes which names show up as choices going forward.
+  async resetDepartmentsToDefault() {
+    await ensureSeeded();
+    if (KV_CONFIGURED) {
+      const current = await kv.smembers(K.departments);
+      for (const name of (current || [])) await kv.srem(K.departments, name);
+      for (const name of DEFAULT_DEPARTMENTS) await kv.sadd(K.departments, name);
+      return;
+    }
+    const store = loadFileStore();
+    store.departments = [...DEFAULT_DEPARTMENTS];
+    persistFileStore();
+  },
 
   // ---- signatures ----
   async createSignature(sig) {

@@ -18,6 +18,9 @@
   .row > div { flex: 1; }
   label { font-size: 12px; font-weight: 600; color: #475569; display: block; margin-bottom: 4px; }
   input, select { width: 100%; padding: 9px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; }
+  input[type="checkbox"] { width: auto; padding: 0; border: none; border-radius: 0; }
+  .dept-checkbox-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px 16px; }
+  .dept-checkbox-grid label { display: flex !important; align-items: center; gap: 8px; font-weight: 400 !important; margin-bottom: 0 !important; cursor: pointer; }
   button.primary { background: #0f172a; color: white; border: none; padding: 10px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 13px; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid #f1f5f9; }
@@ -72,7 +75,7 @@
       <div class="row">
         <div style="flex:1;">
           <label>Departemen yang Boleh Akses/TTD Dokumen Ini</label>
-          <div id="allowedDeptCheckboxes" style="border:1px solid #cbd5e1; border-radius:6px; padding:10px; max-height:160px; overflow-y:auto; font-size:13px;"></div>
+          <div id="allowedDeptCheckboxes" class="dept-checkbox-grid" style="border:1px solid #cbd5e1; border-radius:6px; padding:12px; max-height:220px; overflow-y:auto; font-size:13px;"></div>
           <div style="font-size:11px; color:#94a3b8; margin-top:4px;">Departemen yang tidak dicentang tidak akan bisa melihat/menandatangani dokumen ini (kecuali admin).</div>
         </div>
       </div>
@@ -139,7 +142,7 @@ async function loadDepartments() {
     select.appendChild(opt);
 
     const label = document.createElement('label');
-    label.style.cssText = 'display:flex; align-items:center; gap:6px; font-weight:400; margin-bottom:6px; cursor:pointer;';
+    // styling handled by the .dept-checkbox-grid label CSS rule (fixes the checkbox layout)
     label.innerHTML = `<input type="checkbox" class="allowed-dept-cb" value="${d.name}"> ${d.name}`;
     checkboxes.appendChild(label);
   });

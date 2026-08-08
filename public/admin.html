@@ -77,6 +77,7 @@
     <h2>Departemen &amp; Folder Google Drive</h2>
     <p class="sub">Daftar ini yang muncul sebagai pilihan departemen saat upload dokumen. Folder Google Drive dibuat otomatis saat dokumen pertama dari departemen tersebut ditandatangani — atau Anda bisa mengaitkannya ke folder yang sudah ada dengan menempel Folder ID di bawah.</p>
     <div class="msg" id="deptMsg"></div>
+    <button class="secondary" onclick="resetDepartmentsDefault()" style="margin-bottom:12px;">Reset ke 11 Departemen Default (QA, QC, Production, dst)</button>
     <table>
       <thead><tr><th>Departemen</th><th>Folder Drive</th><th>Aksi</th></tr></thead>
       <tbody id="deptList"></tbody>
@@ -194,6 +195,20 @@ async function addDepartment() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
     document.getElementById('new_dept_name').value = '';
+    loadDepartments();
+  } catch (err) {
+    showMsg(msgEl, err.message, 'error');
+  }
+}
+
+async function resetDepartmentsDefault() {
+  if (!confirm('Ganti SEMUA departemen yang ada sekarang dengan 11 departemen standar (Quality Assurance (QA), Quality Control (QC), dst)?\n\nDokumen yang sudah ada tidak terpengaruh - ini hanya mengganti daftar pilihan saat upload dokumen baru.')) return;
+  const msgEl = document.getElementById('deptMsg');
+  try {
+    const res = await fetch('/api/departments/reset-to-default', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    showMsg(msgEl, 'Berhasil diganti ke 11 departemen standar.', 'success');
     loadDepartments();
   } catch (err) {
     showMsg(msgEl, err.message, 'error');

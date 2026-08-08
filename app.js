@@ -185,6 +185,13 @@ app.delete('/api/departments/:name', requireLogin, requireAdmin, async (req, res
   res.json({ ok: true });
 });
 
+// Admin-only: replace the whole department list with the standard 11 full-name
+// departments in one click (for deployments seeded before that list existed)
+app.post('/api/departments/reset-to-default', requireLogin, requireAdmin, async (req, res) => {
+  await db.resetDepartmentsToDefault();
+  res.json({ ok: true });
+});
+
 // Admin-only: manually link a department to an existing Google Drive folder
 // (paste a folder ID instead of letting the app auto-create a new one)
 app.post('/api/departments/:name/drive-folder', requireLogin, requireAdmin, async (req, res) => {
