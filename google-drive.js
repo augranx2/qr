@@ -25,7 +25,7 @@ function getDrive() {
 }
 
 async function getOrCreateDepartmentFolder(department) {
-  const cached = db.getDriveFolderId(department);
+  const cached = await db.getDriveFolderId(department);
   if (cached) return cached;
 
   const drive = getDrive();
@@ -44,7 +44,7 @@ async function getOrCreateDepartmentFolder(department) {
     });
     folderId = created.data.id;
   }
-  db.setDriveFolderId(department, folderId);
+  await db.setDriveFolderId(department, folderId);
   return folderId;
 }
 
@@ -63,4 +63,19 @@ async function uploadSignedDocument({ filePath, fileName, mimeType, department }
   return { fileId: res.data.id, webViewLink: res.data.webViewLink };
 }
 
-module.exports = { isConfigured, uploadSignedDocument };
+/**
+ * Overwrites the content of an existing Drive file (used when a document gets an
+ * additional QR signature - keeps one file per document instead of creating duplicates).
+ * Returns { fileId, webViewLink } on success.
+ */
+async function updateSignedDocument({ fileId, filePath, mimeType }) {
+  const drive = getDrive();
+  const res = await drive.files.update({
+    fileId,
+    media: { mimeType, body: fs.createReadStream(filePath) },
+    fields: 'id, webViewLink'
+  });
+  return { fileId: res.data.id, webViewLink: res.data.webViewLink };
+}
+
+module.exports = { isConfigured, uploadSignedDocument, updateSignedDocument };

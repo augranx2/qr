@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<title>Kelola User & Departemen - TTD QR Code</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; background: #f8fafc; margin: 0; color: #0f172a; }
+  header { background: #0f172a; color: white; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; }
+  header h1 { font-size: 16px; margin: 0; }
+  header a { color: #93c5fd; text-decoration: none; font-size: 13px; }
+  main { max-width: 900px; margin: 24px auto; padding: 0 16px; }
+  .panel { background: white; border-radius: 10px; padding: 20px; margin-bottom: 20px; border: 1px solid #e2e8f0; }
+  .panel h2 { font-size: 15px; margin: 0 0 4px; }
+  .panel p.sub { font-size: 12px; color: #64748b; margin: 0 0 16px; }
+  .row { display: flex; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+  .row > div { flex: 1; min-width: 140px; }
+  label { font-size: 12px; font-weight: 600; color: #475569; display: block; margin-bottom: 4px; }
+  input, select { width: 100%; padding: 9px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; }
+  button.primary { background: #0f172a; color: white; border: none; padding: 9px 14px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 13px; }
+  button.secondary { background: white; color: #334155; border: 1px solid #cbd5e1; padding: 6px 10px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 12px; }
+  button.danger { background: white; color: #dc2626; border: 1px solid #fecaca; padding: 6px 10px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+  th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid #f1f5f9; }
+  th { color: #64748b; font-weight: 600; font-size: 12px; }
+  .badge { padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; background: #e2e8f0; color: #334155; }
+  .badge.admin { background: #ede9fe; color: #6d28d9; }
+  .msg { font-size: 13px; margin-bottom: 12px; padding: 8px 12px; border-radius: 6px; display: none; }
+  .msg.error { background: #fee2e2; color: #991b1b; }
+  .msg.success { background: #dcfce7; color: #166534; }
+  .folder-id { font-size: 11px; color: #94a3b8; font-family: monospace; }
+  .actions-cell { white-space: nowrap; }
+  .actions-cell button { margin-right: 6px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Kelola User &amp; Departemen — PT REMS</h1>
+  <a href="/dashboard.html">&larr; Kembali ke Dashboard</a>
+</header>
+<main>
+
+  <div class="panel">
+    <h2>Tambah Personil Baru</h2>
+    <p class="sub">Personil yang ditambahkan bisa langsung login memakai username &amp; password ini.</p>
+    <div class="msg" id="userMsg"></div>
+    <form id="userForm">
+      <div class="row">
+        <div><label>Username</label><input type="text" id="new_username" required></div>
+        <div><label>Password Awal</label><input type="text" id="new_password" required placeholder="min. 4 karakter"></div>
+      </div>
+      <div class="row">
+        <div><label>Nama Lengkap</label><input type="text" id="new_full_name" required></div>
+        <div><label>Departemen</label><select id="new_department"></select></div>
+        <div><label>Peran</label>
+          <select id="new_role">
+            <option value="personil">Personil</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+      </div>
+      <button type="submit" class="primary">Tambah Personil</button>
+    </form>
+  </div>
+
+  <div class="panel">
+    <h2>Daftar Personil</h2>
+    <table>
+      <thead><tr><th>Username</th><th>Nama</th><th>Departemen</th><th>Peran</th><th>Aksi</th></tr></thead>
+      <tbody id="userList"></tbody>
+    </table>
+  </div>
+
+  <div class="panel">
+    <h2>Departemen &amp; Folder Google Drive</h2>
+    <p class="sub">Daftar ini yang muncul sebagai pilihan departemen saat upload dokumen. Folder Google Drive dibuat otomatis saat dokumen pertama dari departemen tersebut ditandatangani — atau Anda bisa mengaitkannya ke folder yang sudah ada dengan menempel Folder ID di bawah.</p>
+    <div class="msg" id="deptMsg"></div>
+    <table>
+      <thead><tr><th>Departemen</th><th>Folder Drive</th><th>Aksi</th></tr></thead>
+      <tbody id="deptList"></tbody>
+    </table>
+    <div class="row" style="margin-top:16px;">
+      <div><label>Tambah Departemen Baru</label><input type="text" id="new_dept_name" placeholder="cth. Produksi"></div>
+      <div style="flex:0; align-self:flex-end;"><button class="primary" onclick="addDepartment()">Tambah</button></div>
+    </div>
+  </div>
+
+</main>
+<script>
+function showMsg(el, text, type) {
+  el.textContent = text; el.className = 'msg ' + type; el.style.display = 'block';
+  setTimeout(() => { el.style.display = 'none'; }, 4000);
+}
+
+async function checkAuth() {
+  const res = await fetch('/api/me');
+  const data = await res.json();
+  if (!data.user) { window.location.href = '/'; return; }
+  if (data.user.role !== 'admin') { alert('Hanya admin yang bisa membuka halaman ini'); window.location.href = '/dashboard.html'; }
+}
+
+// ---- Users ----
+async function loadUsers() {
+  const res = await fetch('/api/users');
+  const data = await res.json();
+  const tbody = document.getElementById('userList');
+  tbody.innerHTML = '';
+  data.users.forEach(u => {
+    const tr = document.createElement('tr');
+    const roleBadge = u.role === 'admin' ? '<span class="badge admin">Admin</span>' : '<span class="badge">Personil</span>';
+    tr.innerHTML = `<td>${u.username}</td><td>${u.full_name}</td><td>${u.department || '-'}</td><td>${roleBadge}</td>
+      <td class="actions-cell">
+        <button class="secondary" onclick="resetPassword(${u.id}, '${u.username}')">Reset Password</button>
+        <button class="danger" onclick="deleteUser(${u.id}, '${u.username}')">Hapus</button>
+      </td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+document.getElementById('userForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const msgEl = document.getElementById('userMsg');
+  const body = {
+    username: document.getElementById('new_username').value,
+    password: document.getElementById('new_password').value,
+    full_name: document.getElementById('new_full_name').value,
+    department: document.getElementById('new_department').value,
+    role: document.getElementById('new_role').value
+  };
+  try {
+    const res = await fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    showMsg(msgEl, `Personil "${body.username}" berhasil ditambahkan.`, 'success');
+    document.getElementById('userForm').reset();
+    loadUsers();
+  } catch (err) {
+    showMsg(msgEl, err.message, 'error');
+  }
+});
+
+async function resetPassword(userId, username) {
+  const newPass = prompt(`Password baru untuk "${username}":`);
+  if (!newPass) return;
+  const res = await fetch(`/api/users/${userId}/reset-password`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: newPass })
+  });
+  const data = await res.json();
+  if (!res.ok) { alert(data.error); return; }
+  alert('Password berhasil diganti.');
+}
+
+async function deleteUser(userId, username) {
+  if (!confirm(`Hapus akun "${username}"? Tindakan ini tidak bisa dibatalkan.`)) return;
+  const res = await fetch(`/api/users/${userId}`, { method: 'DELETE' });
+  const data = await res.json();
+  if (!res.ok) { alert(data.error); return; }
+  loadUsers();
+}
+
+// ---- Departments ----
+async function loadDepartments() {
+  const res = await fetch('/api/departments');
+  const data = await res.json();
+
+  const select = document.getElementById('new_department');
+  select.innerHTML = data.departments.map(d => `<option value="${d.name}">${d.name}</option>`).join('');
+
+  const tbody = document.getElementById('deptList');
+  tbody.innerHTML = '';
+  data.departments.forEach(d => {
+    const tr = document.createElement('tr');
+    const folderInfo = d.drive_folder_id
+      ? `<span class="folder-id">${d.drive_folder_id}</span>`
+      : '<span style="color:#94a3b8; font-size:12px;">belum ada (dibuat otomatis nanti)</span>';
+    tr.innerHTML = `<td>${d.name}</td><td>${folderInfo}</td>
+      <td class="actions-cell">
+        <button class="secondary" onclick="linkFolder('${d.name}')">Kaitkan Folder Drive</button>
+        <button class="danger" onclick="removeDepartment('${d.name}')">Hapus</button>
+      </td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+async function addDepartment() {
+  const msgEl = document.getElementById('deptMsg');
+  const name = document.getElementById('new_dept_name').value.trim();
+  if (!name) return;
+  try {
+    const res = await fetch('/api/departments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    document.getElementById('new_dept_name').value = '';
+    loadDepartments();
+  } catch (err) {
+    showMsg(msgEl, err.message, 'error');
+  }
+}
+
+async function removeDepartment(name) {
+  if (!confirm(`Hapus departemen "${name}" dari daftar pilihan? Dokumen yang sudah ada tidak terpengaruh.`)) return;
+  await fetch(`/api/departments/${encodeURIComponent(name)}`, { method: 'DELETE' });
+  loadDepartments();
+}
+
+async function linkFolder(deptName) {
+  const folderId = prompt(
+    `Tempel Folder ID Google Drive untuk "${deptName}".\n\nCara dapat Folder ID: buka folder tersebut di Drive, lihat URL-nya, bagian setelah /folders/ itu adalah Folder ID.\n\nKosongkan/batalkan kalau ingin dibuat otomatis saja.`
+  );
+  if (!folderId) return;
+  const res = await fetch(`/api/departments/${encodeURIComponent(deptName)}/drive-folder`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ folderId: folderId.trim() })
+  });
+  const data = await res.json();
+  if (!res.ok) { alert(data.error); return; }
+  loadDepartments();
+}
+
+checkAuth();
+loadUsers();
+loadDepartments();
+</script>
+</body>
+</html>

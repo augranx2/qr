@@ -81,21 +81,24 @@ async function loadDoc() {
   const data = await res.json();
   if (!res.ok) { document.getElementById('docInfo').textContent = data.error; return; }
   doc = data.document;
+  const ttdInfo = doc.signature_count > 0
+    ? `<div><b>TTD Sebelumnya:</b> ${doc.signature_count} tanda tangan sudah ada di dokumen ini &mdash; QR baru akan ditambahkan di atasnya</div>`
+    : '';
   document.getElementById('docInfo').innerHTML =
     `<div><b>Nama Dokumen:</b> ${doc.doc_name}</div>
      <div><b>No. Dokumen:</b> ${doc.doc_number}</div>
-     <div><b>Departemen:</b> ${doc.department}</div>`;
+     <div><b>Departemen:</b> ${doc.department}</div>
+     ${ttdInfo}`;
 
   if (doc.file_type === 'pdf') {
     document.getElementById('pageCanvas').style.display = 'block';
-    const url = `/uploads/${doc.stored_filename}`;
-    pdfDocProxy = await pdfjsLib.getDocument(url).promise;
+    pdfDocProxy = await pdfjsLib.getDocument(doc.current_file_url).promise;
     totalPages = pdfDocProxy.numPages;
     document.getElementById('pager').style.display = totalPages > 1 ? 'flex' : 'none';
     await renderPage(1);
   } else {
     const img = document.getElementById('imgPreview');
-    img.src = `/uploads/${doc.stored_filename}`;
+    img.src = doc.current_file_url;
     img.style.display = 'block';
     img.onload = () => positionQrBox();
   }

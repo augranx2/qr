@@ -35,6 +35,7 @@
 <header>
   <h1>TTD Elektronik QR Code — PT REMS</h1>
   <div style="display:flex; align-items:center; gap:12px;">
+    <a id="adminLink" href="/admin.html" style="display:none; color:#93c5fd; text-decoration:none; font-size:13px; font-weight:600;">Kelola User &amp; Departemen</a>
     <span class="who" id="whoami"></span>
     <button onclick="logout()">Keluar</button>
   </div>
@@ -57,7 +58,7 @@
       <div class="row">
         <div>
           <label>Departemen</label>
-          <input type="text" id="department" required placeholder="cth. QA">
+          <select id="department" required></select>
         </div>
         <div>
           <label>File (PDF / JPG / PNG)</label>
@@ -84,6 +85,7 @@ async function checkAuth() {
   const data = await res.json();
   if (!data.user) { window.location.href = '/'; return; }
   document.getElementById('whoami').textContent = `${data.user.full_name} (${data.user.username})`;
+  if (data.user.role === 'admin') document.getElementById('adminLink').style.display = 'inline';
 }
 async function logout() {
   await fetch('/api/logout', { method: 'POST' });
@@ -91,6 +93,22 @@ async function logout() {
 }
 function showMsg(el, text, type) {
   el.textContent = text; el.className = 'msg ' + type; el.style.display = 'block';
+}
+
+async function loadDepartments() {
+  const res = await fetch('/api/departments');
+  const data = await res.json();
+  const select = document.getElementById('department');
+  select.innerHTML = '';
+  if (data.departments.length === 0) {
+    select.innerHTML = '<option value="">Belum ada departemen - minta admin menambahkan</option>';
+    return;
+  }
+  data.departments.forEach(d => {
+    const opt = document.createElement('option');
+    opt.value = d.name; opt.textContent = d.name;
+    select.appendChild(opt);
+  });
 }
 
 document.getElementById('uploadForm').addEventListener('submit', async (e) => {
@@ -107,6 +125,7 @@ document.getElementById('uploadForm').addEventListener('submit', async (e) => {
     if (!res.ok) throw new Error(data.error);
     showMsg(msgEl, 'Dokumen berhasil diupload. Silakan lanjut ke penempatan QR.', 'success');
     document.getElementById('uploadForm').reset();
+    loadDepartments();
     loadDocs();
   } catch (err) {
     showMsg(msgEl, err.message, 'error');
@@ -120,13 +139,17 @@ async function loadDocs() {
   tbody.innerHTML = '';
   data.documents.forEach(doc => {
     const tr = document.createElement('tr');
-    const statusBadge = doc.status === 'signed'
-      ? '<span class="badge signed">Sudah TTD</span>'
+    const count = doc.signature_count || 0;
+    const statusBadge = count > 0
+      ? `<span class="badge signed">${count} TTD</span>`
       : '<span class="badge pending">Menunggu TTD</span>';
-    const action = doc.status === 'signed'
-      ? `<a class="action" href="#" onclick="viewSigned('${doc.id}'); return false;">Lihat</a>`
+    const signLink = count > 0
+      ? `<a class="action" href="/sign.html?id=${doc.id}">+ Tambah TTD</a>`
       : `<a class="action" href="/sign.html?id=${doc.id}">Tandatangani</a>`;
-    tr.innerHTML = `<td>${doc.doc_name}</td><td>${doc.doc_number}</td><td>${doc.department}</td><td>${doc.uploaded_by_name}</td><td>${statusBadge}</td><td>${action}</td>`;
+    const viewLink = count > 0
+      ? `<a class="action" href="#" onclick="viewSigned('${doc.id}'); return false;" style="margin-left:10px;">Lihat</a>`
+      : '';
+    tr.innerHTML = `<td>${doc.doc_name}</td><td>${doc.doc_number}</td><td>${doc.department}</td><td>${doc.uploaded_by_name}</td><td>${statusBadge}</td><td>${signLink}${viewLink}</td>`;
     tbody.appendChild(tr);
   });
 }
@@ -139,6 +162,7 @@ async function viewSigned(docId) {
 }
 
 checkAuth();
+loadDepartments();
 loadDocs();
 </script>
 </body>

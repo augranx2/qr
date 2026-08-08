@@ -4,12 +4,13 @@ Web app untuk upload dokumen (PDF/JPG/PNG), lalu ditandatangani secara elektroni
 
 ## Fitur
 - Login per personil (username & password sendiri)
-- Upload dokumen dengan metadata wajib: nama dokumen, nomor dokumen, departemen
+- Upload dokumen dengan metadata wajib: nama dokumen, nomor dokumen, departemen (pilih dari dropdown, bukan ketik bebas)
 - Editor drag-and-drop untuk menempatkan posisi & ukuran QR pada dokumen (support multi-halaman PDF)
+- **Bisa tempel QR lebih dari satu kali di dokumen yang sama** (mis. alur review berjenjang: dibuat QA, diperiksa Supervisor, disetujui Manager) — tiap QR baru menumpuk di atas versi sebelumnya tanpa menghapus QR yang sudah ada
 - QR di-embed permanen ke file PDF/gambar
 - Halaman verifikasi publik (dibuka saat QR di-scan) menampilkan detail dokumen & penandatangan
-- **Dokumen hasil TTD otomatis tersimpan ke Google Drive** (folder per departemen), sambil tetap tersimpan juga di server
-- Role admin untuk menambah akun personil baru
+- **Dokumen hasil TTD otomatis tersimpan ke Google Drive** (folder per departemen, satu file yang terus ter-update seiring bertambahnya TTD — bukan file baru menumpuk tiap kali ditandatangani)
+- Halaman **Kelola User & Departemen** (khusus admin): tambah/hapus personil, reset password, kelola daftar departemen beserta kaitan folder Google Drive-nya
 
 ## Cara Menjalankan (Development/Testing)
 
@@ -23,10 +24,10 @@ Web app untuk upload dokumen (PDF/JPG/PNG), lalu ditandatangani secara elektroni
    npm start
    ```
 4. Buka `http://localhost:3000` di browser.
-5. Login pertama kali dengan akun default:
-   - Username: `admin`
-   - Password: `admin123`
-   - **WAJIB segera ganti password ini** (lihat bagian "Mengganti Password Admin" di bawah).
+5. Login pertama kali dengan salah satu akun default (dua-duanya berperan admin penuh):
+   - Username: `admin` / Password: `admin123`
+   - Username: `dev` / Password: `dev1066` (akun developer, akses sama seperti admin)
+   - **WAJIB segera ganti kedua password ini** sebelum dipakai beneran (lihat bagian "Mengganti Password Admin" di bawah).
 
 ## Konfigurasi Production (Wajib sebelum dipakai beneran)
 
@@ -39,6 +40,8 @@ SESSION_SECRET=isi-dengan-string-acak-yang-panjang-dan-rahasia
 ```
 
 **BASE_URL harus domain publik yang bisa diakses siapa saja** (termasuk auditor BPOM/eksternal yang scan QR dari HP mereka) — jangan `localhost`.
+
+**Tentang login (`SESSION_SECRET`):** Aplikasi ini pakai token JWT tersimpan di cookie browser untuk login, bukan session di memori server. Ini sengaja dipilih supaya kompatibel dengan Vercel (serverless) — kalau pakai session biasa, tiap request bisa "dilempar" ke instance server berbeda dan Anda akan terus-menerus dianggap belum login. `SESSION_SECRET` dipakai untuk menandatangani token ini — **wajib diisi dengan string acak yang panjang** di production (Vercel/server kantor), jangan pakai nilai default di kode.
 
 Untuk menjalankan `.env` secara otomatis di server kantor, install `dotenv` (`npm install dotenv`) dan tambahkan `require('dotenv').config();` di baris pertama `server.js` — ini sengaja saya lepas dari kode karena saat pengujian package tersebut menampilkan pesan mencurigakan di log yang tidak semestinya ada di package resmi. **Sebelum menambahkannya kembali, saya sarankan tim IT Anda mengecek dulu integritas package `dotenv` di npm registry**, atau cukup set environment variable langsung di sistem/PM2 tanpa perlu package `dotenv` sama sekali (lihat bagian PM2 di bawah — cara ini yang saya rekomendasikan).
 
@@ -93,40 +96,78 @@ Restart aplikasi. Selesai — setiap dokumen yang ditandatangani sekarang otomat
 
 **Kalau upload ke Drive gagal** (misal token kedaluwarsa, folder terhapus, dsb), dokumen **tetap berhasil ditandatangani dan tersimpan di server** — hanya bagian upload ke Drive-nya yang gagal, dicatat di log server. Tidak akan menghentikan proses TTD.
 
-## Tahap 1: Deploy ke Vercel (untuk testing/review desain dulu)
+## Tahap 1: Deploy ke Vercel
 
-⚠️ **Penting dipahami dulu:** Vercel itu *serverless* — filesystem-nya hanya bisa ditulis di folder sementara (`/tmp`), dan folder itu **akan terhapus** setiap ada deployment baru atau saat fungsi "tidur" lalu aktif lagi (cold start). Artinya:
-- Dokumen yang diupload dan data (user, tanda tangan) **bisa hilang sewaktu-waktu** selama masa testing ini
-- Cocok untuk: mengecek tampilan, alur kerja, drag-QR, hasil PDF ber-QR
-- **Tidak cocok** untuk: menyimpan dokumen resmi jangka panjang — itu baru dilakukan di Tahap 2 (server kantor)
+⚠️ **WAJIB dibaca dulu — ini bukan cuma catatan tambahan:** Vercel itu *serverless* — setiap request bisa "dilempar" ke instance server yang berbeda-beda, dan masing-masing instance **tidak berbagi memori atau file** satu sama lain. Kalau data (user, dokumen, tanda tangan) disimpan sebagai file biasa, akibatnya:
+- User baru yang ditambahkan **kadang muncul kadang tidak** (tergantung instance mana yang kebagian request)
+- Fitur multi-QR (tempel QR berkali-kali) **bisa gagal**, karena sistem tidak selalu tahu dokumen ini sudah punya QR sebelumnya atau belum
+- QR yang digenerate **bisa mengarah ke `localhost`** kalau environment variable `BASE_URL` tidak ter-set dengan benar di lingkungan Production
 
-Kode di project ini sudah saya siapkan supaya otomatis mendeteksi jika berjalan di Vercel (lewat `vercel.json` + `api/index.js`) dan akan pakai `/tmp` secara otomatis — Anda tidak perlu ubah apa-apa.
+**Solusinya, dan ini WAJIB untuk deploy ke Vercel:** pakai **database terpusat** (bukan file), supaya semua instance baca-tulis ke sumber data yang sama. Project ini sudah saya siapkan untuk otomatis pakai **Upstash Redis** (database key-value gratis, terintegrasi langsung di Vercel Marketplace) kalau tersedia — kalau tidak diaktifkan, akan otomatis fallback ke file biasa (cukup untuk lokal/server kantor yang cuma 1 proses selalu nyala, tapi **tidak cukup untuk Vercel**).
 
-### Langkah deploy:
-1. Install Vercel CLI (butuh Node.js di komputer Anda):
-   ```
-   npm install -g vercel
-   ```
-2. Masuk ke folder project ini, lalu login:
-   ```
-   vercel login
-   ```
-3. Set environment variable dulu (BASE_URL akan otomatis terisi domain Vercel Anda — bisa juga diatur manual setelah deploy pertama, karena Vercel baru kasih tahu domainnya setelah deploy sekali):
-   ```
-   vercel
-   ```
-   Ikuti pertanyaan interaktifnya (pilih default untuk kebanyakan opsi).
-4. Setelah deploy pertama selesai, Anda akan dapat URL seperti `https://qr-signature-app-xxxx.vercel.app`. Set env var `BASE_URL` dengan URL ini (supaya QR yang digenerate mengarah ke link yang benar):
-   ```
-   vercel env add BASE_URL
-   ```
-   Isi dengan URL di atas, lalu deploy ulang:
-   ```
-   vercel --prod
-   ```
-5. Buka URL tersebut, login dengan `admin` / `admin123`, dan coba seluruh alurnya.
+### Langkah A: Aktifkan Upstash Redis (WAJIB untuk Vercel)
+1. Buka [vercel.com](https://vercel.com), masuk ke project Anda (`qr-signature-app`)
+2. Klik tab **Storage** di project tersebut
+3. Klik **Create Database** (atau **Browse Marketplace** kalau tidak muncul langsung), cari **Upstash** / **Redis**
+4. Pilih paket gratis (Free/Hobby), pilih region (pilih yang terdekat, mis. Singapore)
+5. Klik **Connect** ke project `qr-signature-app` Anda
+6. Vercel akan **otomatis mengisi** environment variable `KV_REST_API_URL` dan `KV_REST_API_TOKEN` ke project Anda — Anda tidak perlu copy-paste apapun secara manual
 
-**Catatan:** jika ingin data upload/tanda-tangan tidak hilang selama masa testing Vercel (misal untuk didemokan ke tim beberapa hari), beri tahu saya — saya bisa sambungkan ke database gratis seperti Vercel Postgres atau Turso, supaya lebih stabil sebelum pindah ke server kantor.
+Setelah ini aktif, **semua data (user, dokumen, tanda tangan) akan konsisten** di semua instance Vercel — masalah "kadang muncul kadang tidak" akan hilang.
+
+### Langkah B: Set BASE_URL dengan benar (supaya QR tidak mengarah ke localhost)
+Ini yang sering kelewat: environment variable harus diisi **khusus untuk environment "Production"**, bukan cuma "Development".
+
+1. Di dashboard Vercel project Anda, buka **Settings > Environment Variables**
+2. Cari (atau tambah) `BASE_URL`
+3. **Pastikan dicentang untuk "Production"** (bukan cuma Preview/Development)
+4. Isi dengan domain production Anda yang sebenarnya, contoh: `https://qr-signature-app.vercel.app` (tanpa `/` di akhir — cek domain persis di tab **Domains**)
+5. Lakukan hal yang sama untuk `SESSION_SECRET` dan semua `GDRIVE_*` — pastikan semuanya dicentang untuk Production
+
+Setelah kedua langkah di atas (Upstash + BASE_URL) selesai, **deploy ulang** supaya perubahan environment variable terpakai:
+```
+vercel --prod
+```
+
+⚠️ Environment variable yang baru ditambahkan/diubah di dashboard **tidak otomatis berlaku** ke deployment yang sudah jalan — selalu perlu `vercel --prod` ulang setelahnya.
+
+### Langkah C: Deploy pertama kali (kalau belum pernah)
+1. Install Vercel CLI: `npm install -g vercel`
+2. Login: `vercel login`
+3. Di folder project: `vercel` (ikuti wizard)
+4. Setelah dapat URL pertama, lakukan Langkah A dan B di atas
+5. Deploy ulang: `vercel --prod`
+6. Buka URL-nya, login dengan `admin`/`admin123` atau `dev`/`dev1066`
+
+## Alur Kerja Lebih Mudah: GitHub + Auto-Deploy
+
+Kalau sekarang terasa ribet karena tiap ada fitur baru harus: copy folder → `npm install` → `vercel --prod` manual, ini bisa disederhanakan dengan menghubungkan **GitHub**. Setelah terhubung, tiap saya kirim file baru, Anda tinggal push ke GitHub — **Vercel otomatis deploy sendiri**, tidak perlu command `vercel --prod` lagi, dan tidak perlu copy folder ke folder baru lagi (Git yang jaga histori perubahan, backup manual Anda tidak diperlukan lagi).
+
+### Setup (dilakukan sekali saja):
+1. Buat akun di [github.com](https://github.com) kalau belum punya
+2. Buat repository baru, **pilih Private** (supaya kode tidak publik), beri nama bebas misal `qr-signature-app`
+3. Di komputer Anda, folder project (Folder B), jalankan:
+   ```
+   git init
+   git add .
+   git commit -m "Initial commit"
+   git branch -M main
+   git remote add origin https://github.com/USERNAME-ANDA/qr-signature-app.git
+   git push -u origin main
+   ```
+   (Ganti `USERNAME-ANDA` dengan username GitHub Anda. Saat push pertama kali biasanya diminta login GitHub lewat browser.)
+4. Di dashboard Vercel, buka project Anda, ke **Settings > Git**, klik **Connect Git Repository**, pilih repo GitHub yang baru dibuat itu
+
+Setelah ini terhubung: tiap saya kasih Anda file baru, caranya jadi:
+```
+(timpa file yang berubah ke folder project Anda)
+git add .
+git commit -m "update fitur X"
+git push
+```
+Vercel otomatis mendeteksi push ini dan mulai deploy — tidak perlu `vercel --prod` manual lagi. Anda bisa pantau progresnya di dashboard Vercel, tab **Deployments**.
+
+**Bonus:** dengan Git, kalau ada update yang ternyata bikin error, Anda bisa lihat riwayat versi sebelumnya di tab Deployments dan klik "Promote to Production" untuk balik ke versi yang masih normal — jauh lebih aman daripada mengandalkan folder backup manual.
 
 ## Tahap 2: Pindah ke Server Kantor (Production Sesungguhnya)
 
@@ -159,30 +200,28 @@ server {
 
 ## Menambah Akun Personil Baru
 
-Login sebagai admin, lalu panggil endpoint (bisa dibuatkan halaman UI-nya menyusul, untuk sekarang via API):
+Login sebagai **admin**, lalu klik link **"Kelola User & Departemen"** di pojok kanan atas dashboard (hanya muncul untuk akun admin). Di halaman itu Anda bisa:
+- Tambah personil baru (username, password awal, nama, departemen, peran)
+- Reset password personil kapan saja
+- Hapus akun personil
+- Kelola daftar departemen (dropdown yang muncul saat upload dokumen) dan mengaitkan tiap departemen ke folder Google Drive tertentu
 
-```bash
-curl -X POST https://ttd.remspharma.co.id/api/users \
-  -H "Content-Type: application/json" \
-  --cookie "<cookie sesi admin>" \
-  -d '{"username":"budi.qa","password":"passwordAwal123","full_name":"Budi Santoso","department":"QA","role":"personil"}'
-```
-Sarankan personil mengganti password setelah login pertama (fitur ganti password belum ada di versi ini — bisa saya tambahkan kalau diperlukan).
+Tidak perlu lagi lewat command line/API manual — semua sudah ada UI-nya di `/admin.html`.
 
 ## Mengganti Password Admin
 
-Untuk sekarang, cara tercepat adalah hapus file `data/store.json`, edit password default di `db.js` (bagian `bcrypt.hashSync('admin123', 10)`), lalu jalankan ulang — atau minta saya tambahkan halaman ganti password di update berikutnya.
+Login sebagai admin, buka halaman **Kelola User & Departemen**, klik **"Reset Password"** di baris akun `admin`. Atau kalau lupa password sama sekali: hapus file `data/store.json`, lalu jalankan ulang aplikasi (akun admin default akan dibuat lagi dengan password `admin123`).
 
 ## Struktur Data
 
-- `data/store.json` — database berbasis file JSON (users, documents, signatures). **Backup rutin file ini.** Di Vercel, file ini otomatis disimpan di `/tmp` (sementara); di server kantor, tersimpan permanen di folder project.
-- `uploads/` — file asli yang diupload (belum ditandatangani)
-- `signed/` — file hasil setelah QR di-embed (inilah yang dibuka publik lewat link verifikasi)
+- **Data (user, dokumen, tanda tangan):** disimpan di **Upstash Redis** kalau berjalan di Vercel dengan Storage sudah dikonek (lihat Tahap 1, Langkah A) — ini sumber data terpusat yang konsisten di semua instance. Kalau Upstash belum dikonek (mis. saat testing lokal), otomatis fallback ke file `data/store.json` — cukup untuk lokal/server kantor (satu proses saja yang selalu nyala), **tapi tidak cukup untuk Vercel** karena filesystem-nya tidak dibagi antar-instance.
+- `uploads/` — file asli yang diupload (belum ditandatangani). Di Vercel ini tersimpan sementara di `/tmp` (khusus untuk generate preview saat proses tanda tangan) — di server kantor, tersimpan permanen di folder project.
+- `signed/` — file hasil setelah QR di-embed (inilah yang dibuka publik lewat link verifikasi, dan yang dikirim ke Google Drive)
 
-Catatan: aplikasi ini sengaja menggunakan JSON file sebagai database (bukan SQLite/PostgreSQL) supaya tidak ada native module yang perlu dikompilasi — lebih portable untuk dijalankan di Vercel maupun server biasa. Kalau nanti jumlah dokumen sudah banyak (ratusan/ribuan) dan performa jadi masalah, beri tahu saya untuk dipindahkan ke database sungguhan.
+Catatan: kalau nanti pindah ke server kantor dan tidak mau pakai Upstash (koneksi internet ke luar mungkin dibatasi), aplikasi akan otomatis pakai file `data/store.json` biasa — ini aman karena di server kantor cuma ada 1 proses yang selalu nyala (lewat PM2), beda dengan Vercel yang bisa punya banyak instance sekaligus.
 
 ## Catatan Compliance (CPOB)
-Setiap tanda tangan tercatat di tabel `signatures` (siapa, dokumen apa, kapan) — bisa dipakai sebagai audit trail. Untuk kebutuhan yang lebih ketat (mis. tidak bisa dihapus/diedit, log akses, dsb.), beri tahu saya dan saya bisa perkuat lapisan audit trail-nya.
+Setiap tanda tangan tercatat (siapa, dokumen apa, kapan) — bisa dipakai sebagai audit trail. Untuk kebutuhan yang lebih ketat (mis. tidak bisa dihapus/diedit, log akses, dsb.), beri tahu saya dan saya bisa perkuat lapisan audit trail-nya.
 
 ## Belum Termasuk di Versi Ini (bisa ditambahkan)
 - Halaman ganti password mandiri untuk personil

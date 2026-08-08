@@ -1,5 +1,6 @@
 const express = require('express');
-const session = require('express-session');
+const jwt = require('jsonwebtoken');
+const cookieParser = require('cookie-parser');
 const bcrypt = require('bcryptjs');
 const multer = require('multer');
 const path = require('path');
@@ -19,20 +20,18 @@ for (const dir of [UPLOAD_DIR, SIGNED_DIR]) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
+const JWT_SECRET = process.env.SESSION_SECRET || 'change-this-secret-in-production';
+const TOKEN_MAX_AGE = 1000 * 60 * 60 * 8; // 8 hours
+
 const app = express();
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(session({
-  secret: process.env.SESSION_SECRET || 'change-this-secret-in-production',
-  resave: false,
-  saveUninitialized: false,
-  cookie: { maxAge: 1000 * 60 * 60 * 8 } // 8 hours
-}));
+app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', (req, res, next) => {
   // Only allow access to uploads if logged in (raw uploaded docs are internal, not yet signed)
-  if (!req.session.user) return res.status(401).send('Unauthorized');
+  if (!getUserFromRequest(req)) return res.status(401).send('Unauthorized');
   next();
 }, express.static(UPLOAD_DIR));
 app.use('/signed', express.static(SIGNED_DIR)); // signed docs are viewable via the public verification page
@@ -52,42 +51,122 @@ const upload = multer({
   }
 });
 
-// ---------- Auth middleware ----------
+// ---------- Auth helpers (stateless JWT in an httpOnly cookie - works across serverless instances) ----------
+function getUserFromRequest(req) {
+  const token = req.cookies && req.cookies.auth_token;
+  if (!token) return null;
+  try {
+    return jwt.verify(token, JWT_SECRET);
+  } catch (e) {
+    return null; // expired or tampered token
+  }
+}
+
 function requireLogin(req, res, next) {
-  if (!req.session.user) return res.status(401).json({ error: 'Belum login' });
+  const user = getUserFromRequest(req);
+  if (!user) return res.status(401).json({ error: 'Belum login' });
+  req.user = user;
   next();
 }
 
 // ---------- AUTH ROUTES ----------
-app.post('/api/login', (req, res) => {
+app.post('/api/login', async (req, res) => {
   const { username, password } = req.body;
-  const user = db.getUserByUsername(username);
+  const user = await db.getUserByUsername(username);
   if (!user || !bcrypt.compareSync(password, user.password_hash)) {
     return res.status(401).json({ error: 'Username atau password salah' });
   }
-  req.session.user = { id: user.id, username: user.username, full_name: user.full_name, department: user.department, role: user.role };
-  res.json({ user: req.session.user });
+  const payload = { id: user.id, username: user.username, full_name: user.full_name, department: user.department, role: user.role };
+  const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '8h' });
+  res.cookie('auth_token', token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production' || !!process.env.VERCEL,
+    sameSite: 'lax',
+    maxAge: TOKEN_MAX_AGE
+  });
+  res.json({ user: payload });
 });
 
 app.post('/api/logout', (req, res) => {
-  req.session.destroy(() => res.json({ ok: true }));
+  res.clearCookie('auth_token');
+  res.json({ ok: true });
 });
 
 app.get('/api/me', (req, res) => {
-  res.json({ user: req.session.user || null });
+  res.json({ user: getUserFromRequest(req) });
+});
+
+function requireAdmin(req, res, next) {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Hanya admin yang bisa melakukan ini' });
+  next();
+}
+
+// List personil accounts (admin only)
+app.get('/api/users', requireLogin, requireAdmin, async (req, res) => {
+  res.json({ users: await db.listUsers() });
 });
 
 // Admin-only: create personil accounts
-app.post('/api/users', requireLogin, (req, res) => {
-  if (req.session.user.role !== 'admin') return res.status(403).json({ error: 'Hanya admin yang bisa menambah user' });
+app.post('/api/users', requireLogin, requireAdmin, async (req, res) => {
   const { username, password, full_name, department, role } = req.body;
   if (!username || !password || !full_name) return res.status(400).json({ error: 'Data tidak lengkap' });
   try {
-    db.createUser({ username, password, full_name, department, role });
+    await db.createUser({ username, password, full_name, department, role });
     res.json({ ok: true });
   } catch (e) {
     res.status(400).json({ error: e.message || 'Username sudah dipakai' });
   }
+});
+
+// Admin-only: reset a user's password
+app.post('/api/users/:id/reset-password', requireLogin, requireAdmin, async (req, res) => {
+  const { password } = req.body;
+  if (!password || password.length < 4) return res.status(400).json({ error: 'Password baru minimal 4 karakter' });
+  try {
+    await db.resetUserPassword(Number(req.params.id), password);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// Admin-only: delete a user
+app.delete('/api/users/:id', requireLogin, requireAdmin, async (req, res) => {
+  if (Number(req.params.id) === req.user.id) return res.status(400).json({ error: 'Tidak bisa menghapus akun sendiri' });
+  try {
+    await db.deleteUser(Number(req.params.id));
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// ---------- DEPARTMENTS (controlled list used for upload dropdown + Drive folder mapping) ----------
+app.get('/api/departments', requireLogin, async (req, res) => {
+  res.json({ departments: await db.listDepartments() });
+});
+
+app.post('/api/departments', requireLogin, requireAdmin, async (req, res) => {
+  try {
+    await db.addDepartment(req.body.name || '');
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.delete('/api/departments/:name', requireLogin, requireAdmin, async (req, res) => {
+  await db.removeDepartment(req.params.name);
+  res.json({ ok: true });
+});
+
+// Admin-only: manually link a department to an existing Google Drive folder
+// (paste a folder ID instead of letting the app auto-create a new one)
+app.post('/api/departments/:name/drive-folder', requireLogin, requireAdmin, async (req, res) => {
+  const { folderId } = req.body;
+  if (!folderId) return res.status(400).json({ error: 'Folder ID wajib diisi' });
+  await db.setDriveFolderId(req.params.name, folderId.trim());
+  res.json({ ok: true });
 });
 
 // ---------- DOCUMENT UPLOAD ----------
@@ -112,11 +191,11 @@ app.post('/api/documents', requireLogin, upload.single('file'), async (req, res)
       page_height = firstPage.getHeight();
     }
 
-    db.createDocument({
+    await db.createDocument({
       id, doc_name, doc_number, department, file_type,
       original_filename: req.file.originalname,
       stored_filename: req.file.filename,
-      uploaded_by: req.session.user.id,
+      uploaded_by: req.user.id,
       page_width, page_height
     });
 
@@ -128,20 +207,24 @@ app.post('/api/documents', requireLogin, upload.single('file'), async (req, res)
 });
 
 // List documents
-app.get('/api/documents', requireLogin, (req, res) => {
-  res.json({ documents: db.getAllDocumentsWithUploader() });
+app.get('/api/documents', requireLogin, async (req, res) => {
+  res.json({ documents: await db.getAllDocumentsWithUploader() });
 });
 
-app.get('/api/documents/:id', requireLogin, (req, res) => {
-  const doc = db.getDocumentById(req.params.id);
+app.get('/api/documents/:id', requireLogin, async (req, res) => {
+  const doc = await db.getDocumentById(req.params.id);
   if (!doc) return res.status(404).json({ error: 'Dokumen tidak ditemukan' });
-  res.json({ document: doc });
+  const signature_count = await db.getSignatureCountForDocument(doc.id);
+  // If this document already has at least one QR embedded, preview/edit on top of that
+  // version instead of the original upload, so new QR placements don't overlap old ones.
+  const current_file_url = doc.signed_filename ? `/signed/${doc.signed_filename}` : `/uploads/${doc.stored_filename}`;
+  res.json({ document: { ...doc, signature_count, current_file_url } });
 });
 
 // ---------- SIGNING (place QR + embed) ----------
 app.post('/api/documents/:id/sign', requireLogin, async (req, res) => {
   try {
-    const doc = db.getDocumentById(req.params.id);
+    const doc = await db.getDocumentById(req.params.id);
     if (!doc) return res.status(404).json({ error: 'Dokumen tidak ditemukan' });
 
     const { qr_x, qr_y, qr_size, page_number } = req.body;
@@ -154,7 +237,11 @@ app.post('/api/documents/:id/sign', requireLogin, async (req, res) => {
     const qrDataUrl = await QRCode.toDataURL(verifyUrl, { margin: 1, width: 300 });
     const qrPngBytes = Buffer.from(qrDataUrl.split(',')[1], 'base64');
 
-    const inputPath = path.join(UPLOAD_DIR, doc.stored_filename);
+    // If this document already has a QR embedded from a previous signature, keep building on
+    // top of that version (so QR codes accumulate) instead of starting again from the original.
+    const baseFilename = doc.signed_filename || doc.stored_filename;
+    const baseDir = doc.signed_filename ? SIGNED_DIR : UPLOAD_DIR;
+    const inputPath = path.join(baseDir, baseFilename);
     const outFilename = `${signatureId}${path.extname(doc.stored_filename)}`;
     const outPath = path.join(SIGNED_DIR, outFilename);
 
@@ -184,8 +271,8 @@ app.post('/api/documents/:id/sign', requireLogin, async (req, res) => {
       await base.composite([{ input: resizedQr, left, top }]).toFile(outPath);
     }
 
-    db.createSignature({
-      id: signatureId, document_id: doc.id, signed_by: req.session.user.id,
+    await db.createSignature({
+      id: signatureId, document_id: doc.id, signed_by: req.user.id,
       qr_x, qr_y, qr_size, page_number: page_number || 1
     });
 
@@ -194,21 +281,28 @@ app.post('/api/documents/:id/sign', requireLogin, async (req, res) => {
     if (gdrive.isConfigured()) {
       try {
         const mimeType = doc.file_type === 'pdf' ? 'application/pdf' : (path.extname(outFilename) === '.png' ? 'image/png' : 'image/jpeg');
-        driveInfo = await gdrive.uploadSignedDocument({
-          filePath: outPath,
-          fileName: `${doc.doc_number} - ${doc.doc_name}${path.extname(outFilename)}`,
-          mimeType,
-          department: doc.department
-        });
+        if (doc.drive_file_id) {
+          // Document already has a Drive file from an earlier signature - overwrite it in place
+          // so the folder doesn't fill up with a duplicate per signature.
+          driveInfo = await gdrive.updateSignedDocument({ fileId: doc.drive_file_id, filePath: outPath, mimeType });
+        } else {
+          driveInfo = await gdrive.uploadSignedDocument({
+            filePath: outPath,
+            fileName: `${doc.doc_number} - ${doc.doc_name}${path.extname(outFilename)}`,
+            mimeType,
+            department: doc.department
+          });
+        }
       } catch (e) {
         console.error('Gagal upload ke Google Drive:', e.message);
         driveError = e.message;
       }
     }
-    db.markDocumentSigned(doc.id, outFilename, driveInfo);
+    await db.markDocumentSigned(doc.id, outFilename, driveInfo);
 
     res.json({
       ok: true, signatureId, verifyUrl, signedFile: `/signed/${outFilename}`,
+      signatureCount: await db.getSignatureCountForDocument(doc.id),
       driveUploaded: !!driveInfo,
       driveViewLink: driveInfo ? driveInfo.webViewLink : null,
       driveError
@@ -220,15 +314,15 @@ app.post('/api/documents/:id/sign', requireLogin, async (req, res) => {
 });
 
 // Internal helper: find the signature id for an already-signed document
-app.get('/api/documents/:id/signature', requireLogin, (req, res) => {
-  const sig = db.getLatestSignatureForDocument(req.params.id);
+app.get('/api/documents/:id/signature', requireLogin, async (req, res) => {
+  const sig = await db.getLatestSignatureForDocument(req.params.id);
   if (!sig) return res.status(404).json({ error: 'Dokumen ini belum ditandatangani' });
   res.json({ signatureId: sig.id });
 });
 
 // ---------- PUBLIC VERIFICATION PAGE (data endpoint) ----------
-app.get('/api/verify/:signatureId', (req, res) => {
-  const sig = db.getSignatureWithDetails(req.params.signatureId);
+app.get('/api/verify/:signatureId', async (req, res) => {
+  const sig = await db.getSignatureWithDetails(req.params.signatureId);
   if (!sig) return res.status(404).json({ error: 'Tanda tangan tidak ditemukan atau tidak valid' });
   res.json({ signature: sig });
 });
