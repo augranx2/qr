@@ -37,7 +37,9 @@
 <body>
 <header>
   <div style="display:flex; align-items:center; gap:10px;">
-    <img src="/logo-rama.png" alt="Logo PT REMS" style="width:28px; height:28px; object-fit:contain;">
+    <div style="background:white; border-radius:6px; padding:3px; display:flex; align-items:center; justify-content:center;">
+      <img src="/logo-rama.png" alt="Logo PT REMS" style="width:26px; height:26px; object-fit:contain; display:block;">
+    </div>
     <h1>TTD Elektronik QR Code — PT REMS</h1>
   </div>
   <div style="display:flex; align-items:center; gap:12px;">
@@ -105,12 +107,26 @@
     </table>
     <p id="signedEmpty" style="font-size:13px; color:#94a3b8; display:none; margin-top:8px;">Belum ada dokumen yang ditandatangani.</p>
   </div>
+
+  <div class="panel">
+    <h2>Diarsipkan</h2>
+    <p class="sub" style="font-size:12px; color:#64748b; margin:-8px 0 16px;">Dokumen yang diarsipkan tidak hilang - QR yang sudah dicetak tetap valid kalau di-scan. Bisa dikembalikan kapan saja.</p>
+    <table>
+      <thead>
+        <tr><th>Nama Dokumen</th><th>No. Dokumen</th><th>Departemen</th><th>Jumlah TTD</th><th></th></tr>
+      </thead>
+      <tbody id="archivedDocList"></tbody>
+    </table>
+    <p id="archivedEmpty" style="font-size:13px; color:#94a3b8; display:none; margin-top:8px;">Belum ada dokumen yang diarsipkan.</p>
+  </div>
 </main>
 <script>
+let currentUser = null;
 async function checkAuth() {
   const res = await fetch('/api/me');
   const data = await res.json();
   if (!data.user) { window.location.href = '/'; return; }
+  currentUser = data.user;
   document.getElementById('whoami').textContent = `${data.user.full_name} (${data.user.username})`;
   if (data.user.role === 'admin') document.getElementById('adminLink').style.display = 'inline';
   const canViewAudit = data.user.role === 'admin' || (data.user.jabatan && /manager/i.test(data.user.jabatan));
@@ -171,24 +187,45 @@ document.getElementById('uploadForm').addEventListener('submit', async (e) => {
   }
 });
 
+function canManage(doc) {
+  if (!currentUser) return false;
+  if (currentUser.role === 'admin') return true;
+  if (doc.uploaded_by === currentUser.id) return true;
+  return currentUser.department === doc.department;
+}
+
+function manageButtonsHtml(doc) {
+  if (!canManage(doc)) return '';
+  const archiveBtn = `<a class="action" href="#" onclick="archiveDoc('${doc.id}', true); return false;" style="margin-left:10px; color:#92400e;">Arsipkan</a>`;
+  const deleteBtn = doc.signature_count > 0
+    ? '' // signed documents can't be permanently deleted - archive only, to keep printed QR codes valid
+    : `<a class="action" href="#" onclick="deleteDoc('${doc.id}'); return false;" style="margin-left:10px; color:#dc2626;">Hapus</a>`;
+  return archiveBtn + deleteBtn;
+}
+
 async function loadDocs() {
   const res = await fetch('/api/documents');
   const data = await res.json();
   const pendingBody = document.getElementById('pendingDocList');
   const signedBody = document.getElementById('signedDocList');
+  const archivedBody = document.getElementById('archivedDocList');
   pendingBody.innerHTML = '';
   signedBody.innerHTML = '';
+  archivedBody.innerHTML = '';
 
-  const pending = data.documents.filter(d => !(d.signature_count > 0));
-  const signed = data.documents.filter(d => d.signature_count > 0);
+  const active = data.documents.filter(d => !d.archived);
+  const archived = data.documents.filter(d => d.archived);
+  const pending = active.filter(d => !(d.signature_count > 0));
+  const signed = active.filter(d => d.signature_count > 0);
 
   document.getElementById('pendingEmpty').style.display = pending.length === 0 ? 'block' : 'none';
   document.getElementById('signedEmpty').style.display = signed.length === 0 ? 'block' : 'none';
+  document.getElementById('archivedEmpty').style.display = archived.length === 0 ? 'block' : 'none';
 
   pending.forEach(doc => {
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${doc.doc_name}</td><td>${doc.doc_number}</td><td>${doc.department}</td><td>${doc.uploaded_by_name}</td>
-      <td><a class="action" href="/sign.html?id=${doc.id}">Tandatangani</a></td>`;
+      <td><a class="action" href="/sign.html?id=${doc.id}">Tandatangani</a>${manageButtonsHtml(doc)}</td>`;
     pendingBody.appendChild(tr);
   });
 
@@ -197,9 +234,39 @@ async function loadDocs() {
     tr.innerHTML = `<td>${doc.doc_name}</td><td>${doc.doc_number}</td><td>${doc.department}</td><td>${doc.uploaded_by_name}</td>
       <td><span class="badge signed">${doc.signature_count} TTD</span></td>
       <td><a class="action" href="/sign.html?id=${doc.id}">+ Tambah TTD</a>
-      <a class="action" href="#" onclick="viewSigned('${doc.id}'); return false;" style="margin-left:10px;">Lihat</a></td>`;
+      <a class="action" href="#" onclick="viewSigned('${doc.id}'); return false;" style="margin-left:10px;">Lihat</a>${manageButtonsHtml(doc)}</td>`;
     signedBody.appendChild(tr);
   });
+
+  archived.forEach(doc => {
+    const tr = document.createElement('tr');
+    const restoreBtn = canManage(doc) ? `<a class="action" href="#" onclick="archiveDoc('${doc.id}', false); return false;">Kembalikan</a>` : '';
+    tr.innerHTML = `<td>${doc.doc_name}</td><td>${doc.doc_number}</td><td>${doc.department}</td>
+      <td><span class="badge">${doc.signature_count} TTD</span></td>
+      <td>${restoreBtn}</td>`;
+    archivedBody.appendChild(tr);
+  });
+}
+
+async function archiveDoc(docId, archived) {
+  const confirmMsg = archived
+    ? 'Arsipkan dokumen ini? Bisa dikembalikan kapan saja, dan QR yang sudah dicetak tetap valid.'
+    : 'Kembalikan dokumen ini dari arsip?';
+  if (!confirm(confirmMsg)) return;
+  const res = await fetch(`/api/documents/${docId}/archive`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived })
+  });
+  const data = await res.json();
+  if (!res.ok) { alert(data.error); return; }
+  loadDocs();
+}
+
+async function deleteDoc(docId) {
+  if (!confirm('Hapus PERMANEN dokumen ini? Tindakan ini tidak bisa dibatalkan. (Hanya bisa untuk dokumen yang belum pernah ditandatangani.)')) return;
+  const res = await fetch(`/api/documents/${docId}`, { method: 'DELETE' });
+  const data = await res.json();
+  if (!res.ok) { alert(data.error); return; }
+  loadDocs();
 }
 
 async function viewSigned(docId) {

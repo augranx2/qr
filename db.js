@@ -303,6 +303,33 @@ module.exports = {
       persistFileStore();
     }
   },
+  // Archive/unarchive just hides a document from the main dashboard lists - it never
+  // touches the underlying files or signature records, so any QR already printed on
+  // paper keeps working when scanned.
+  async setDocumentArchived(id, archived) {
+    await ensureSeeded();
+    if (KV_CONFIGURED) {
+      const raw = await kv.hget(K.documents, id);
+      if (!raw) return;
+      const doc = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      doc.archived = archived;
+      await kv.hset(K.documents, { [id]: JSON.stringify(doc) });
+      return;
+    }
+    const store = loadFileStore();
+    const doc = store.documents.find(d => d.id === id);
+    if (doc) { doc.archived = archived; persistFileStore(); }
+  },
+  // Removes the document record itself. Deliberately does NOT touch signature records -
+  // any QR code already printed/scanned must keep resolving on the verification page even
+  // after the document entry is deleted from the active dashboard.
+  async deleteDocument(id) {
+    await ensureSeeded();
+    if (KV_CONFIGURED) { await kv.hdel(K.documents, id); return; }
+    const store = loadFileStore();
+    store.documents = store.documents.filter(d => d.id !== id);
+    persistFileStore();
+  },
 
   // ---- google drive folder cache ----
   async getDriveFolderId(department) {

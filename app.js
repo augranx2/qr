@@ -114,6 +114,15 @@ function canAccessDocument(user, doc) {
   return allowed.length === 0 || allowed.includes(user.department);
 }
 
+// Archiving/deleting is for admins, the person who uploaded it, or anyone from the
+// same department that owns the document (the "pemilik file" - not just the individual
+// uploader, but their whole department).
+function canManageDocument(user, doc) {
+  if (user.role === 'admin') return true;
+  if (doc.uploaded_by === user.id) return true;
+  return user.department === doc.department;
+}
+
 // Audit trail is restricted to admins and anyone whose jabatan indicates a
 // managerial role (Manager / Assistant Manager, in any casing/wording).
 function canViewAuditTrail(user) {
@@ -435,6 +444,43 @@ app.get('/api/documents/:id/signature', requireLogin, async (req, res) => {
   const sig = await db.getLatestSignatureForDocument(req.params.id);
   if (!sig) return res.status(404).json({ error: 'Dokumen ini belum ditandatangani' });
   res.json({ signatureId: sig.id });
+});
+
+// Archive/unarchive - hides (or restores) a document from the main dashboard lists.
+// Doesn't touch files or signature records, so already-printed QR codes still work.
+app.post('/api/documents/:id/archive', requireLogin, async (req, res) => {
+  const doc = await db.getDocumentById(req.params.id);
+  if (!doc) return res.status(404).json({ error: 'Dokumen tidak ditemukan' });
+  if (!canManageDocument(req.user, doc)) return res.status(403).json({ error: 'Anda tidak punya izin untuk mengarsipkan dokumen ini' });
+  const archived = req.body.archived !== false; // default true (archive); pass {archived:false} to restore
+  await db.setDocumentArchived(req.params.id, archived);
+  await db.logAudit({
+    type: archived ? 'archive_document' : 'unarchive_document',
+    user_id: req.user.id, username: req.user.username, full_name: req.user.full_name,
+    document_id: doc.id, doc_name: doc.doc_name, doc_number: doc.doc_number
+  });
+  res.json({ ok: true });
+});
+
+// Permanent delete - only allowed for documents that have NEVER been signed. Once a
+// document has at least one signature, its QR code(s) may already be printed on a
+// physical document somewhere - deleting it here wouldn't remove that, but it WOULD
+// make the "no such document" lookup impossible to disambiguate from tampering, so we
+// simply don't allow it. Use Archive for signed documents instead.
+app.delete('/api/documents/:id', requireLogin, async (req, res) => {
+  const doc = await db.getDocumentById(req.params.id);
+  if (!doc) return res.status(404).json({ error: 'Dokumen tidak ditemukan' });
+  if (!canManageDocument(req.user, doc)) return res.status(403).json({ error: 'Anda tidak punya izin untuk menghapus dokumen ini' });
+  const signatureCount = await db.getSignatureCountForDocument(req.params.id);
+  if (signatureCount > 0) {
+    return res.status(400).json({ error: 'Dokumen yang sudah pernah ditandatangani tidak bisa dihapus permanen (demi menjaga validitas QR yang sudah dicetak) - gunakan Arsipkan.' });
+  }
+  await db.deleteDocument(req.params.id);
+  await db.logAudit({
+    type: 'delete_document', user_id: req.user.id, username: req.user.username, full_name: req.user.full_name,
+    document_id: doc.id, doc_name: doc.doc_name, doc_number: doc.doc_number
+  });
+  res.json({ ok: true });
 });
 
 // ---------- AUDIT TRAIL (admin / manager / assistant manager only) ----------
