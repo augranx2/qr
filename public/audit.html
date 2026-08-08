@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<title>Audit Trail - TTD QR Code</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; background: #f8fafc; margin: 0; color: #0f172a; }
+  header { background: #0f172a; color: white; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; }
+  header h1 { font-size: 16px; margin: 0; }
+  header a { color: #93c5fd; text-decoration: none; font-size: 13px; }
+  main { max-width: 900px; margin: 24px auto; padding: 0 16px; }
+  .panel { background: white; border-radius: 10px; padding: 20px; border: 1px solid #e2e8f0; }
+  .panel h2 { font-size: 15px; margin: 0 0 4px; }
+  .panel p.sub { font-size: 12px; color: #64748b; margin: 0 0 16px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid #f1f5f9; }
+  th { color: #64748b; font-weight: 600; font-size: 12px; }
+  .badge { padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+  .badge.login { background: #dcfce7; color: #166534; }
+  .badge.logout { background: #f1f5f9; color: #475569; }
+  .badge.upload_document { background: #dbeafe; color: #1e40af; }
+  .badge.sign_document { background: #fef3c7; color: #92400e; }
+  .empty { font-size: 13px; color: #94a3b8; padding: 20px 0; text-align: center; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Audit Trail — PT REMS</h1>
+  <a href="/dashboard.html">&larr; Kembali ke Dashboard</a>
+</header>
+<main>
+  <div class="panel">
+    <h2>Riwayat Aktivitas</h2>
+    <p class="sub">Login, logout, upload dokumen, dan tanda tangan — 500 aktivitas terakhir, terbaru di atas.</p>
+    <table>
+      <thead><tr><th>Waktu</th><th>Aksi</th><th>Oleh</th><th>Detail</th></tr></thead>
+      <tbody id="logList"></tbody>
+    </table>
+    <div class="empty" id="emptyMsg" style="display:none;">Belum ada aktivitas tercatat.</div>
+  </div>
+</main>
+<script>
+const LABELS = {
+  login: ['Login', 'login'],
+  logout: ['Logout', 'logout'],
+  upload_document: ['Upload Dokumen', 'upload_document'],
+  sign_document: ['Tanda Tangan', 'sign_document']
+};
+
+async function checkAuth() {
+  const res = await fetch('/api/me');
+  const data = await res.json();
+  if (!data.user) { window.location.href = '/'; return; }
+}
+
+function detailFor(entry) {
+  if (entry.type === 'upload_document' || entry.type === 'sign_document') {
+    return `${entry.doc_number || ''} - ${entry.doc_name || ''}`;
+  }
+  return '-';
+}
+
+async function loadLog() {
+  const res = await fetch('/api/audit-log');
+  const data = await res.json();
+  if (!res.ok) {
+    document.querySelector('main').innerHTML = `<div class="panel"><p style="color:#dc2626;">${data.error}</p></div>`;
+    return;
+  }
+  const tbody = document.getElementById('logList');
+  tbody.innerHTML = '';
+  if (data.entries.length === 0) {
+    document.getElementById('emptyMsg').style.display = 'block';
+    return;
+  }
+  data.entries.forEach(entry => {
+    const tr = document.createElement('tr');
+    const label = LABELS[entry.type] ? LABELS[entry.type][0] : entry.type;
+    const cssClass = LABELS[entry.type] ? LABELS[entry.type][1] : '';
+    const when = new Date(entry.timestamp).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
+    tr.innerHTML = `<td>${when}</td><td><span class="badge ${cssClass}">${label}</span></td><td>${entry.full_name || entry.username || '-'}</td><td>${detailFor(entry)}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+checkAuth();
+loadLog();
+</script>
+</body>
+</html>

@@ -3,14 +3,17 @@
 Web app untuk upload dokumen (PDF/JPG/PNG), lalu ditandatangani secara elektronik dengan QR Code yang bisa ditempatkan bebas di posisi manapun pada dokumen. QR berisi link ke halaman verifikasi publik.
 
 ## Fitur
-- Login per personil (username & password sendiri)
+- Logo perusahaan (PT. Rama Emerald Multi Sukses) tampil di halaman login, dashboard, dan verifikasi
+- Login per personil (username, password, jabatan, departemen sendiri)
 - Upload dokumen dengan metadata wajib: nama dokumen, nomor dokumen, departemen (pilih dari dropdown, bukan ketik bebas)
-- Editor drag-and-drop untuk menempatkan posisi & ukuran QR pada dokumen (support multi-halaman PDF)
+- **Kontrol akses per departemen**: saat upload, pilih departemen mana saja yang boleh melihat/menandatangani dokumen tersebut — departemen yang tidak dipilih otomatis tidak bisa akses (admin selalu bisa akses semua)
+- Editor drag-and-drop untuk menempatkan posisi & ukuran QR pada dokumen (support multi-halaman PDF), bisa dipakai berulang kali dalam satu sesi tanpa perlu kembali ke dashboard
 - **Bisa tempel QR lebih dari satu kali di dokumen yang sama** (mis. alur review berjenjang: dibuat QA, diperiksa Supervisor, disetujui Manager) — tiap QR baru menumpuk di atas versi sebelumnya tanpa menghapus QR yang sudah ada
 - QR di-embed permanen ke file PDF/gambar
-- Halaman verifikasi publik (dibuka saat QR di-scan) menampilkan detail dokumen & penandatangan
-- **Dokumen hasil TTD otomatis tersimpan ke Google Drive** (folder per departemen, satu file yang terus ter-update seiring bertambahnya TTD — bukan file baru menumpuk tiap kali ditandatangani)
-- Halaman **Kelola User & Departemen** (khusus admin): tambah/hapus personil, reset password, kelola daftar departemen beserta kaitan folder Google Drive-nya
+- Halaman verifikasi publik (dibuka saat QR di-scan) menampilkan nama perusahaan, detail dokumen, serta nama & jabatan penandatangan
+- **Dokumen otomatis tersimpan ke Google Drive**, terpisah rapi ke subfolder "File Asli" dan "File TTD QR Code" di dalam folder tiap departemen
+- Halaman **Kelola User & Departemen** (khusus admin): tambah/hapus personil (dengan jabatan), reset password, kelola daftar departemen beserta kaitan folder Google Drive-nya
+- Halaman **Audit Trail** (khusus admin atau siapa pun yang jabatannya mengandung kata "Manager"/"Assistant Manager"): mencatat login, logout, upload dokumen, dan tanda tangan
 
 ## Cara Menjalankan (Development/Testing)
 
@@ -200,6 +203,13 @@ server {
     }
 }
 ```
+
+## Migrasi Nama Departemen (untuk deployment yang sudah pernah jalan)
+
+Daftar departemen default sudah diperbarui jadi nama lengkap (Quality Assurance (QA), Quality Control (QC), dst — 11 total). **Ini hanya berlaku otomatis untuk instalasi baru** (database yang belum pernah di-seed sama sekali). Kalau aplikasi Anda sudah pernah dipakai sebelumnya (sudah ada data di Upstash/file lokal), daftar departemen lama (QA, Produksi, dst) tidak otomatis berubah — silakan perbarui manual lewat halaman **Kelola User & Departemen**:
+1. Tambahkan 11 departemen baru satu per satu lewat form "Tambah Departemen Baru"
+2. Hapus departemen lama yang sudah tidak dipakai
+3. Dokumen yang sudah ada sebelumnya tetap memakai nama departemen lama (tidak ikut berubah otomatis) — ini tidak masalah untuk dokumen yang sudah selesai, tapi untuk upload baru gunakan nama departemen yang baru
 
 ## Menambah Akun Personil Baru
 

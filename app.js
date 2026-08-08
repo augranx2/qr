@@ -76,7 +76,7 @@ app.post('/api/login', async (req, res) => {
   if (!user || !bcrypt.compareSync(password, user.password_hash)) {
     return res.status(401).json({ error: 'Username atau password salah' });
   }
-  const payload = { id: user.id, username: user.username, full_name: user.full_name, department: user.department, role: user.role };
+  const payload = { id: user.id, username: user.username, full_name: user.full_name, department: user.department, role: user.role, jabatan: user.jabatan || null };
   const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '8h' });
   res.cookie('auth_token', token, {
     httpOnly: true,
@@ -84,10 +84,13 @@ app.post('/api/login', async (req, res) => {
     sameSite: 'lax',
     maxAge: TOKEN_MAX_AGE
   });
+  await db.logAudit({ type: 'login', user_id: user.id, username: user.username, full_name: user.full_name });
   res.json({ user: payload });
 });
 
-app.post('/api/logout', (req, res) => {
+app.post('/api/logout', async (req, res) => {
+  const user = getUserFromRequest(req);
+  if (user) await db.logAudit({ type: 'logout', user_id: user.id, username: user.username, full_name: user.full_name });
   res.clearCookie('auth_token');
   res.json({ ok: true });
 });
@@ -98,6 +101,28 @@ app.get('/api/me', (req, res) => {
 
 function requireAdmin(req, res, next) {
   if (req.user.role !== 'admin') return res.status(403).json({ error: 'Hanya admin yang bisa melakukan ini' });
+  next();
+}
+
+// A document is visible/accessible to: admins, whoever uploaded it, and anyone whose
+// department is in the document's allowed_departments list (departments not listed
+// simply can't see or act on that document at all).
+function canAccessDocument(user, doc) {
+  if (user.role === 'admin') return true;
+  if (doc.uploaded_by === user.id) return true;
+  const allowed = doc.allowed_departments || [];
+  return allowed.length === 0 || allowed.includes(user.department);
+}
+
+// Audit trail is restricted to admins and anyone whose jabatan indicates a
+// managerial role (Manager / Assistant Manager, in any casing/wording).
+function canViewAuditTrail(user) {
+  if (user.role === 'admin') return true;
+  return !!(user.jabatan && /manager/i.test(user.jabatan));
+}
+
+function requireAuditAccess(req, res, next) {
+  if (!canViewAuditTrail(req.user)) return res.status(403).json({ error: 'Hanya admin/manager yang bisa melihat audit trail' });
   next();
 }
 
@@ -178,6 +203,15 @@ app.post('/api/documents', requireLogin, upload.single('file'), async (req, res)
     }
     if (!req.file) return res.status(400).json({ error: 'File wajib diupload' });
 
+    // allowed_departments arrives as a JSON-stringified array (multipart form fields are
+    // always strings). Empty/invalid -> defaults to just the uploading department itself.
+    let allowedDepartments = [];
+    try {
+      const parsed = JSON.parse(req.body.allowed_departments || '[]');
+      if (Array.isArray(parsed)) allowedDepartments = parsed.filter(Boolean);
+    } catch (e) { /* ignore malformed input, fall back to default below */ }
+    if (allowedDepartments.length === 0) allowedDepartments = [department];
+
     const ext = path.extname(req.file.originalname).toLowerCase();
     const file_type = ext === '.pdf' ? 'pdf' : 'image';
     const id = uuidv4();
@@ -216,8 +250,14 @@ app.post('/api/documents', requireLogin, upload.single('file'), async (req, res)
       stored_filename: req.file.filename,
       uploaded_by: req.user.id,
       page_width, page_height,
+      allowed_departments: allowedDepartments,
       drive_original_file_id: driveOriginal ? driveOriginal.fileId : null,
       drive_original_view_link: driveOriginal ? driveOriginal.webViewLink : null
+    });
+
+    await db.logAudit({
+      type: 'upload_document', user_id: req.user.id, username: req.user.username, full_name: req.user.full_name,
+      document_id: id, doc_name, doc_number
     });
 
     res.json({ id, file_type, stored_filename: req.file.filename, driveUploaded: !!driveOriginal });
@@ -227,14 +267,18 @@ app.post('/api/documents', requireLogin, upload.single('file'), async (req, res)
   }
 });
 
-// List documents
+// List documents - only shows documents the requesting user's department is allowed to
+// see (admins and the original uploader always see everything they're involved with)
 app.get('/api/documents', requireLogin, async (req, res) => {
-  res.json({ documents: await db.getAllDocumentsWithUploader() });
+  const all = await db.getAllDocumentsWithUploader();
+  const visible = all.filter(doc => canAccessDocument(req.user, doc));
+  res.json({ documents: visible });
 });
 
 app.get('/api/documents/:id', requireLogin, async (req, res) => {
   const doc = await db.getDocumentById(req.params.id);
   if (!doc) return res.status(404).json({ error: 'Dokumen tidak ditemukan' });
+  if (!canAccessDocument(req.user, doc)) return res.status(403).json({ error: 'Departemen Anda tidak memiliki akses ke dokumen ini' });
   const signature_count = await db.getSignatureCountForDocument(doc.id);
   // Preview/edit always goes through our own file-serving route below, which fetches
   // fresh from Google Drive each time - never assumes anything is still on local disk.
@@ -248,6 +292,7 @@ app.get('/api/documents/:id', requireLogin, async (req, res) => {
 app.get('/api/documents/:id/file', requireLogin, async (req, res) => {
   const doc = await db.getDocumentById(req.params.id);
   if (!doc) return res.status(404).send('Dokumen tidak ditemukan');
+  if (!canAccessDocument(req.user, doc)) return res.status(403).send('Departemen Anda tidak memiliki akses ke dokumen ini');
 
   const mimeType = doc.file_type === 'pdf'
     ? 'application/pdf'
@@ -275,6 +320,7 @@ app.post('/api/documents/:id/sign', requireLogin, async (req, res) => {
   try {
     const doc = await db.getDocumentById(req.params.id);
     if (!doc) return res.status(404).json({ error: 'Dokumen tidak ditemukan' });
+    if (!canAccessDocument(req.user, doc)) return res.status(403).json({ error: 'Departemen Anda tidak memiliki akses untuk menandatangani dokumen ini' });
 
     const { qr_x, qr_y, qr_size, page_number } = req.body;
     if (qr_x == null || qr_y == null || qr_size == null) {
@@ -356,6 +402,10 @@ app.post('/api/documents/:id/sign', requireLogin, async (req, res) => {
       }
     }
     await db.markDocumentSigned(doc.id, outFilename, driveInfo);
+    await db.logAudit({
+      type: 'sign_document', user_id: req.user.id, username: req.user.username, full_name: req.user.full_name,
+      document_id: doc.id, doc_name: doc.doc_name, doc_number: doc.doc_number, signature_id: signatureId
+    });
 
     res.json({
       ok: true, signatureId, verifyUrl, signedFile: `/signed/${outFilename}`,
@@ -372,9 +422,18 @@ app.post('/api/documents/:id/sign', requireLogin, async (req, res) => {
 
 // Internal helper: find the signature id for an already-signed document
 app.get('/api/documents/:id/signature', requireLogin, async (req, res) => {
+  const doc = await db.getDocumentById(req.params.id);
+  if (!doc) return res.status(404).json({ error: 'Dokumen tidak ditemukan' });
+  if (!canAccessDocument(req.user, doc)) return res.status(403).json({ error: 'Departemen Anda tidak memiliki akses ke dokumen ini' });
   const sig = await db.getLatestSignatureForDocument(req.params.id);
   if (!sig) return res.status(404).json({ error: 'Dokumen ini belum ditandatangani' });
   res.json({ signatureId: sig.id });
+});
+
+// ---------- AUDIT TRAIL (admin / manager / assistant manager only) ----------
+app.get('/api/audit-log', requireLogin, requireAuditAccess, async (req, res) => {
+  const entries = await db.listAuditLog(500);
+  res.json({ entries });
 });
 
 // ---------- PUBLIC VERIFICATION PAGE (data endpoint) ----------

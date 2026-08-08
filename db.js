@@ -63,13 +63,25 @@ function defaultAdmins() {
     { id: 2, username: 'dev', password_hash: devHash, full_name: 'Developer', department: 'QA', role: 'admin', created_at: new Date().toISOString() }
   ];
 }
-const DEFAULT_DEPARTMENTS = ['QA', 'Produksi', 'PPIC', 'Gudang', 'HRD'];
+const DEFAULT_DEPARTMENTS = [
+  'Quality Assurance (QA)',
+  'Quality Control (QC)',
+  'Production (PR)',
+  'Research and Development (R&D)',
+  'Registration (REG)',
+  'Production Planning and Inventory Control (PPIC)',
+  'Management',
+  'Engineering (TK)',
+  'Human Resources dan General Affairs (HRGA)',
+  'Accounting (ACC)',
+  'Purchasing'
+];
 
 let fileCache = null;
 function loadFileStore() {
   if (fileCache) return fileCache;
   if (!fs.existsSync(DATA_FILE)) {
-    fileCache = { users: defaultAdmins(), documents: [], signatures: [], driveFolders: {}, departments: [...DEFAULT_DEPARTMENTS], _nextUserId: 3 };
+    fileCache = { users: defaultAdmins(), documents: [], signatures: [], driveFolders: {}, departments: [...DEFAULT_DEPARTMENTS], auditLog: [], _nextUserId: 3 };
     fs.writeFileSync(DATA_FILE, JSON.stringify(fileCache, null, 2));
     console.log('Seeded default admin accounts (file) -> admin/admin123 dan dev/dev1066 (GANTI SEGERA)');
     return fileCache;
@@ -77,6 +89,7 @@ function loadFileStore() {
   fileCache = JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8'));
   if (!fileCache.driveFolders) fileCache.driveFolders = {};
   if (!fileCache.departments) fileCache.departments = [...DEFAULT_DEPARTMENTS];
+  if (!fileCache.auditLog) fileCache.auditLog = [];
   return fileCache;
 }
 function persistFileStore() {
@@ -94,6 +107,7 @@ const K = {
   signatures: `${KV_PREFIX}:signatures`,      // hash: sigId -> JSON(signature)
   departments: `${KV_PREFIX}:departments`,    // set of department names
   driveFolders: `${KV_PREFIX}:drive_folders`, // hash: department -> folderId
+  auditLog: `${KV_PREFIX}:audit_log`,         // list: JSON entries, newest first
   seeded: `${KV_PREFIX}:seeded`               // flag so default admins are seeded exactly once
 };
 
@@ -425,5 +439,29 @@ module.exports = {
       signer_department: signer ? signer.department : null,
       signer_jabatan: signer ? (signer.jabatan || null) : null
     };
+  },
+
+  // ---- audit trail ----
+  async logAudit(entry) {
+    await ensureSeeded();
+    const full = { ...entry, timestamp: new Date().toISOString() };
+    if (KV_CONFIGURED) {
+      await kv.lpush(K.auditLog, JSON.stringify(full));
+      await kv.ltrim(K.auditLog, 0, 1999); // keep only the most recent 2000 entries
+      return;
+    }
+    const store = loadFileStore();
+    store.auditLog.unshift(full);
+    if (store.auditLog.length > 2000) store.auditLog.length = 2000;
+    persistFileStore();
+  },
+  async listAuditLog(limit = 200) {
+    await ensureSeeded();
+    if (KV_CONFIGURED) {
+      const raw = await kv.lrange(K.auditLog, 0, limit - 1);
+      return (raw || []).map(r => typeof r === 'string' ? JSON.parse(r) : r);
+    }
+    const store = loadFileStore();
+    return store.auditLog.slice(0, limit);
   }
 };

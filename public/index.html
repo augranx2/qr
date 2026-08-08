@@ -8,8 +8,9 @@
   * { box-sizing: border-box; }
   body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; background: #0f172a; height: 100vh; margin: 0; display: flex; align-items: center; justify-content: center; }
   .card { background: white; padding: 40px; border-radius: 12px; width: 360px; box-shadow: 0 10px 40px rgba(0,0,0,0.3); }
-  h1 { font-size: 20px; margin: 0 0 4px; color: #0f172a; }
-  p.sub { color: #64748b; font-size: 13px; margin: 0 0 24px; }
+  .logo { display: block; margin: 0 auto 16px; width: 64px; height: 64px; object-fit: contain; }
+  h1 { font-size: 20px; margin: 0 0 4px; color: #0f172a; text-align: center; }
+  p.sub { color: #64748b; font-size: 13px; margin: 0 0 24px; text-align: center; }
   label { font-size: 13px; color: #334155; font-weight: 600; display: block; margin-bottom: 6px; }
   input { width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; margin-bottom: 16px; }
   button { width: 100%; padding: 11px; background: #0f172a; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; }
@@ -19,8 +20,9 @@
 </head>
 <body>
   <div class="card">
+    <img src="/logo-rama.png" alt="Logo PT. Rama Emerald Multi Sukses" class="logo">
     <h1>Tanda Tangan Elektronik QR</h1>
-    <p class="sub">Login menggunakan username personil Anda</p>
+    <p class="sub">PT. Rama Emerald Multi Sukses<br>Login menggunakan username personil Anda</p>
     <div class="error" id="err"></div>
     <form id="loginForm">
       <label>Username</label>

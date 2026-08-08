@@ -33,9 +33,13 @@
 </head>
 <body>
 <header>
-  <h1>TTD Elektronik QR Code — PT REMS</h1>
+  <div style="display:flex; align-items:center; gap:10px;">
+    <img src="/logo-rama.png" alt="Logo PT REMS" style="width:28px; height:28px; object-fit:contain;">
+    <h1>TTD Elektronik QR Code — PT REMS</h1>
+  </div>
   <div style="display:flex; align-items:center; gap:12px;">
     <a id="adminLink" href="/admin.html" style="display:none; color:#93c5fd; text-decoration:none; font-size:13px; font-weight:600;">Kelola User &amp; Departemen</a>
+    <a id="auditLink" href="/audit.html" style="display:none; color:#93c5fd; text-decoration:none; font-size:13px; font-weight:600;">Audit Trail</a>
     <span class="who" id="whoami"></span>
     <button onclick="logout()">Keluar</button>
   </div>
@@ -57,12 +61,19 @@
       </div>
       <div class="row">
         <div>
-          <label>Departemen</label>
+          <label>Departemen (untuk folder Google Drive)</label>
           <select id="department" required></select>
         </div>
         <div>
           <label>File (PDF / JPG / PNG)</label>
           <input type="file" id="file" accept=".pdf,.jpg,.jpeg,.png" required>
+        </div>
+      </div>
+      <div class="row">
+        <div style="flex:1;">
+          <label>Departemen yang Boleh Akses/TTD Dokumen Ini</label>
+          <div id="allowedDeptCheckboxes" style="border:1px solid #cbd5e1; border-radius:6px; padding:10px; max-height:160px; overflow-y:auto; font-size:13px;"></div>
+          <div style="font-size:11px; color:#94a3b8; margin-top:4px;">Departemen yang tidak dicentang tidak akan bisa melihat/menandatangani dokumen ini (kecuali admin).</div>
         </div>
       </div>
       <button type="submit" class="primary">Upload</button>
@@ -99,6 +110,8 @@ async function checkAuth() {
   if (!data.user) { window.location.href = '/'; return; }
   document.getElementById('whoami').textContent = `${data.user.full_name} (${data.user.username})`;
   if (data.user.role === 'admin') document.getElementById('adminLink').style.display = 'inline';
+  const canViewAudit = data.user.role === 'admin' || (data.user.jabatan && /manager/i.test(data.user.jabatan));
+  if (canViewAudit) document.getElementById('auditLink').style.display = 'inline';
 }
 async function logout() {
   await fetch('/api/logout', { method: 'POST' });
@@ -112,25 +125,35 @@ async function loadDepartments() {
   const res = await fetch('/api/departments');
   const data = await res.json();
   const select = document.getElementById('department');
+  const checkboxes = document.getElementById('allowedDeptCheckboxes');
   select.innerHTML = '';
+  checkboxes.innerHTML = '';
   if (data.departments.length === 0) {
     select.innerHTML = '<option value="">Belum ada departemen - minta admin menambahkan</option>';
+    checkboxes.innerHTML = '<span style="color:#94a3b8;">Belum ada departemen.</span>';
     return;
   }
   data.departments.forEach(d => {
     const opt = document.createElement('option');
     opt.value = d.name; opt.textContent = d.name;
     select.appendChild(opt);
+
+    const label = document.createElement('label');
+    label.style.cssText = 'display:flex; align-items:center; gap:6px; font-weight:400; margin-bottom:6px; cursor:pointer;';
+    label.innerHTML = `<input type="checkbox" class="allowed-dept-cb" value="${d.name}"> ${d.name}`;
+    checkboxes.appendChild(label);
   });
 }
 
 document.getElementById('uploadForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const msgEl = document.getElementById('uploadMsg');
+  const allowedDepartments = Array.from(document.querySelectorAll('.allowed-dept-cb:checked')).map(cb => cb.value);
   const fd = new FormData();
   fd.append('doc_name', document.getElementById('doc_name').value);
   fd.append('doc_number', document.getElementById('doc_number').value);
   fd.append('department', document.getElementById('department').value);
+  fd.append('allowed_departments', JSON.stringify(allowedDepartments));
   fd.append('file', document.getElementById('file').files[0]);
   try {
     const res = await fetch('/api/documents', { method: 'POST', body: fd });
