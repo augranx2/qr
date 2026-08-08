@@ -108,10 +108,10 @@ app.get('/api/users', requireLogin, requireAdmin, async (req, res) => {
 
 // Admin-only: create personil accounts
 app.post('/api/users', requireLogin, requireAdmin, async (req, res) => {
-  const { username, password, full_name, department, role } = req.body;
+  const { username, password, full_name, department, role, jabatan } = req.body;
   if (!username || !password || !full_name) return res.status(400).json({ error: 'Data tidak lengkap' });
   try {
-    await db.createUser({ username, password, full_name, department, role });
+    await db.createUser({ username, password, full_name, department, role, jabatan });
     res.json({ ok: true });
   } catch (e) {
     res.status(400).json({ error: e.message || 'Username sudah dipakai' });
@@ -200,9 +200,10 @@ app.post('/api/documents', requireLogin, upload.single('file'), async (req, res)
         const mimeType = file_type === 'pdf' ? 'application/pdf' : (ext === '.png' ? 'image/png' : 'image/jpeg');
         driveOriginal = await gdrive.uploadSignedDocument({
           filePath: req.file.path,
-          fileName: `ASLI - ${doc_number} - ${doc_name}${ext}`,
+          fileName: `${doc_number} - ${doc_name}${ext}`,
           mimeType,
-          department
+          department,
+          category: 'File Asli'
         });
       } catch (e) {
         console.error('Gagal upload dokumen asli ke Google Drive:', e.message);
@@ -345,7 +346,8 @@ app.post('/api/documents/:id/sign', requireLogin, async (req, res) => {
             filePath: outPath,
             fileName: `${doc.doc_number} - ${doc.doc_name}${path.extname(outFilename)}`,
             mimeType,
-            department: doc.department
+            department: doc.department,
+            category: 'File TTD QR Code'
           });
         }
       } catch (e) {

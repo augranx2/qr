@@ -135,7 +135,7 @@ module.exports = {
     const store = loadFileStore();
     return store.users.find(u => u.username === username) || null;
   },
-  async createUser({ username, password, full_name, department, role }) {
+  async createUser({ username, password, full_name, department, role, jabatan }) {
     await ensureSeeded();
     if (KV_CONFIGURED) {
       const existing = await kv.hget(K.usernameIndex, username);
@@ -144,6 +144,7 @@ module.exports = {
       const user = {
         id, username, password_hash: bcrypt.hashSync(password, 10),
         full_name, department: department || null, role: role || 'personil',
+        jabatan: jabatan || null,
         created_at: new Date().toISOString()
       };
       await kv.hset(K.users, { [id]: JSON.stringify(user) });
@@ -155,6 +156,7 @@ module.exports = {
     const user = {
       id: store._nextUserId++, username, password_hash: bcrypt.hashSync(password, 10),
       full_name, department: department || null, role: role || 'personil',
+      jabatan: jabatan || null,
       created_at: new Date().toISOString()
     };
     store.users.push(user);
@@ -405,7 +407,8 @@ module.exports = {
         file_type: doc ? doc.file_type : null,
         drive_view_link: doc ? (doc.drive_view_link || null) : null,
         signer_name: signer ? signer.full_name : 'Unknown',
-        signer_department: signer ? signer.department : null
+        signer_department: signer ? signer.department : null,
+        signer_jabatan: signer ? (signer.jabatan || null) : null
       };
     }
     const store = loadFileStore();
@@ -419,7 +422,8 @@ module.exports = {
       signed_filename: doc.signed_filename, file_type: doc.file_type,
       drive_view_link: doc.drive_view_link || null,
       signer_name: signer ? signer.full_name : 'Unknown',
-      signer_department: signer ? signer.department : null
+      signer_department: signer ? signer.department : null,
+      signer_jabatan: signer ? (signer.jabatan || null) : null
     };
   }
 };

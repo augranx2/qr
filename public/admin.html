@@ -52,6 +52,7 @@
       </div>
       <div class="row">
         <div><label>Nama Lengkap</label><input type="text" id="new_full_name" required></div>
+        <div><label>Jabatan</label><input type="text" id="new_jabatan" placeholder="cth. Assistant Manager QA"></div>
         <div><label>Departemen</label><select id="new_department"></select></div>
         <div><label>Peran</label>
           <select id="new_role">
@@ -67,7 +68,7 @@
   <div class="panel">
     <h2>Daftar Personil</h2>
     <table>
-      <thead><tr><th>Username</th><th>Nama</th><th>Departemen</th><th>Peran</th><th>Aksi</th></tr></thead>
+      <thead><tr><th>Username</th><th>Nama</th><th>Jabatan</th><th>Departemen</th><th>Peran</th><th>Aksi</th></tr></thead>
       <tbody id="userList"></tbody>
     </table>
   </div>
@@ -109,7 +110,7 @@ async function loadUsers() {
   data.users.forEach(u => {
     const tr = document.createElement('tr');
     const roleBadge = u.role === 'admin' ? '<span class="badge admin">Admin</span>' : '<span class="badge">Personil</span>';
-    tr.innerHTML = `<td>${u.username}</td><td>${u.full_name}</td><td>${u.department || '-'}</td><td>${roleBadge}</td>
+    tr.innerHTML = `<td>${u.username}</td><td>${u.full_name}</td><td>${u.jabatan || '-'}</td><td>${u.department || '-'}</td><td>${roleBadge}</td>
       <td class="actions-cell">
         <button class="secondary" onclick="resetPassword(${u.id}, '${u.username}')">Reset Password</button>
         <button class="danger" onclick="deleteUser(${u.id}, '${u.username}')">Hapus</button>
@@ -125,6 +126,7 @@ document.getElementById('userForm').addEventListener('submit', async (e) => {
     username: document.getElementById('new_username').value,
     password: document.getElementById('new_password').value,
     full_name: document.getElementById('new_full_name').value,
+    jabatan: document.getElementById('new_jabatan').value,
     department: document.getElementById('new_department').value,
     role: document.getElementById('new_role').value
   };

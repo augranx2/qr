@@ -49,12 +49,46 @@ async function getOrCreateDepartmentFolder(department) {
 }
 
 /**
- * Uploads a signed document into the department's subfolder on Google Drive.
- * Returns { fileId, webViewLink } on success.
+ * Gets (or creates) a subfolder inside the department folder - e.g. "File Asli" or
+ * "File TTD QR Code" - so original and signed documents end up neatly separated
+ * even though they share the same top-level department folder. Cached the same way
+ * as the department folder itself (under a compound key) to avoid repeat API calls.
  */
-async function uploadSignedDocument({ filePath, fileName, mimeType, department }) {
+async function getOrCreateCategoryFolder(department, categoryName) {
+  const cacheKey = `${department}::${categoryName}`;
+  const cached = await db.getDriveFolderId(cacheKey);
+  if (cached) return cached;
+
+  const deptFolderId = await getOrCreateDepartmentFolder(department);
   const drive = getDrive();
-  const folderId = await getOrCreateDepartmentFolder(department);
+  const safeCat = categoryName.replace(/'/g, "\\'");
+  const q = `'${deptFolderId}' in parents and name = '${safeCat}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
+
+  const res = await drive.files.list({ q, fields: 'files(id, name)', spaces: 'drive' });
+  let folderId;
+  if (res.data.files && res.data.files.length > 0) {
+    folderId = res.data.files[0].id;
+  } else {
+    const created = await drive.files.create({
+      requestBody: { name: categoryName, mimeType: 'application/vnd.google-apps.folder', parents: [deptFolderId] },
+      fields: 'id'
+    });
+    folderId = created.data.id;
+  }
+  await db.setDriveFolderId(cacheKey, folderId);
+  return folderId;
+}
+
+/**
+ * Uploads a document into the department's folder on Google Drive - into a "File Asli"
+ * or "File TTD QR Code" subfolder when `category` is given, otherwise directly into the
+ * department folder. Returns { fileId, webViewLink } on success.
+ */
+async function uploadSignedDocument({ filePath, fileName, mimeType, department, category }) {
+  const drive = getDrive();
+  const folderId = category
+    ? await getOrCreateCategoryFolder(department, category)
+    : await getOrCreateDepartmentFolder(department);
   const res = await drive.files.create({
     requestBody: { name: fileName, parents: [folderId] },
     media: { mimeType, body: fs.createReadStream(filePath) },

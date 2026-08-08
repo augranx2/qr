@@ -8,6 +8,7 @@
   * { box-sizing: border-box; }
   body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; background: #f1f5f9; margin: 0; padding: 24px; color: #0f172a; }
   .card { max-width: 480px; margin: 0 auto; background: white; border-radius: 12px; padding: 28px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+  .company-name { text-align: center; font-size: 13px; font-weight: 700; color: #475569; letter-spacing: 0.02em; margin-bottom: 16px; text-transform: uppercase; }
   .valid-badge { display: inline-flex; align-items: center; gap: 8px; background: #dcfce7; color: #166534; padding: 8px 14px; border-radius: 999px; font-size: 13px; font-weight: 700; margin-bottom: 20px; }
   h1 { font-size: 17px; margin: 0 0 20px; }
   .field { margin-bottom: 14px; }
@@ -54,13 +55,17 @@ async function load() {
   const fileLinkHtml = s.drive_view_link
     ? `<a class="download" href="${s.drive_view_link}" target="_blank">Buka Dokumen di Google Drive &rarr;</a>`
     : (s.signed_filename ? `<a class="download" href="/signed/${s.signed_filename}" target="_blank">Lihat Dokumen &rarr;</a>` : '');
+  const signerLine = s.signer_jabatan
+    ? `${s.signer_name} &mdash; ${s.signer_jabatan}, ${s.signer_department || '-'}`
+    : `${s.signer_name} (${s.signer_department || '-'})`;
   card.innerHTML = `
+    <div class="company-name">PT. Rama Emerald Multi Sukses</div>
     <div class="valid-badge">✓ Tanda Tangan Valid</div>
     <h1>Detail Dokumen Tertandatangani</h1>
     <div class="field"><label>Nama Dokumen</label><span>${s.doc_name}</span></div>
     <div class="field"><label>Nomor Dokumen</label><span>${s.doc_number}</span></div>
     <div class="field"><label>Departemen</label><span>${s.department}</span></div>
-    <div class="field"><label>Ditandatangani oleh</label><span>${s.signer_name} (${s.signer_department || '-'})</span></div>
+    <div class="field"><label>Ditandatangani oleh</label><span>${signerLine}</span></div>
     <div class="field"><label>Waktu Tanda Tangan</label><span>${signedDate}</span></div>
     ${fileLinkHtml}
   `;
