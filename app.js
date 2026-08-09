@@ -164,6 +164,21 @@ app.post('/api/users/:id/reset-password', requireLogin, requireAdmin, async (req
   }
 });
 
+// Self-service: any logged-in user can change their OWN password, by proving they know
+// the current one first (unlike the admin reset above, which doesn't need the old password).
+app.post('/api/me/change-password', requireLogin, async (req, res) => {
+  const { oldPassword, newPassword } = req.body;
+  if (!oldPassword || !newPassword) return res.status(400).json({ error: 'Password lama dan baru wajib diisi' });
+  if (newPassword.length < 4) return res.status(400).json({ error: 'Password baru minimal 4 karakter' });
+  const user = await db.getUserById(req.user.id);
+  if (!user || !bcrypt.compareSync(oldPassword, user.password_hash)) {
+    return res.status(401).json({ error: 'Password lama salah' });
+  }
+  await db.resetUserPassword(req.user.id, newPassword);
+  await db.logAudit({ type: 'change_password', user_id: user.id, username: user.username, full_name: user.full_name });
+  res.json({ ok: true });
+});
+
 // Admin-only: delete a user
 app.delete('/api/users/:id', requireLogin, requireAdmin, async (req, res) => {
   if (Number(req.params.id) === req.user.id) return res.status(400).json({ error: 'Tidak bisa menghapus akun sendiri' });
