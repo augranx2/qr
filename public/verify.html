@@ -4,29 +4,80 @@
 <meta charset="UTF-8">
 <title>Verifikasi Tanda Tangan Elektronik</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
 <style>
-  * { box-sizing: border-box; }
-  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; background: #f1f5f9; margin: 0; padding: 24px; color: #0f172a; }
-  .card { max-width: 480px; margin: 0 auto; background: white; border-radius: 12px; padding: 28px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
-  .company-name { text-align: center; font-size: 13px; font-weight: 700; color: #475569; letter-spacing: 0.02em; margin-bottom: 16px; text-transform: uppercase; }
-  .verify-logo { display: block; margin: 0 auto 12px; width: 48px; height: 48px; object-fit: contain; }
-  .valid-badge { display: inline-flex; align-items: center; gap: 8px; background: #dcfce7; color: #166534; padding: 8px 14px; border-radius: 999px; font-size: 13px; font-weight: 700; margin-bottom: 20px; }
-  h1 { font-size: 17px; margin: 0 0 20px; }
-  .field { margin-bottom: 14px; }
-  .field label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; color: #64748b; font-weight: 700; margin-bottom: 2px; }
-  .field span { font-size: 15px; }
-  a.download { display: inline-block; margin-top: 16px; color: #2563eb; font-weight: 600; text-decoration: none; font-size: 14px; }
-  .error { color: #dc2626; text-align: center; padding: 40px 0; }
-  .internal-nav { max-width: 480px; margin: 0 auto 12px; display: none; gap: 16px; font-size: 13px; }
-  .internal-nav a { color: #475569; text-decoration: none; font-weight: 600; }
+  body {
+    min-height: 100vh; padding: 32px 20px; display: flex; flex-direction: column; align-items: center;
+    background: radial-gradient(circle at 50% 0%, #E9F3F0 0%, #F1F5F3 55%);
+  }
+  .internal-nav {
+    max-width: 460px; width: 100%; margin: 0 auto 14px; display: none; gap: 10px; justify-content: center;
+    animation: rise 0.3s var(--ease);
+  }
+  .internal-nav a {
+    color: var(--brand-dark); text-decoration: none; font-weight: 600; font-size: 12.5px;
+    background: var(--brand-soft); padding: 7px 14px; border-radius: 999px;
+    transition: background 0.15s var(--ease);
+  }
+  .internal-nav a:hover { background: #D4EBE3; }
+
+  .verify-card {
+    max-width: 460px; width: 100%; margin: 0 auto; padding: 0; overflow: hidden;
+  }
+  .verify-topband {
+    background: linear-gradient(135deg, #0F2620, #0B6E5C);
+    padding: 28px 28px 20px; text-align: center; position: relative;
+  }
+  .verify-logo-ring {
+    width: 56px; height: 56px; margin: 0 auto 12px; background: white; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow-md);
+  }
+  .verify-logo-ring img { width: 36px; height: 36px; object-fit: contain; }
+  .company-name { color: white; font-size: 12.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; opacity: 0.92; }
+
+  .verify-body { padding: 26px 28px 30px; }
+  .valid-badge {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    background: var(--green-soft); color: var(--green); padding: 9px 16px; border-radius: 999px;
+    font-size: 13px; font-weight: 700; margin: -42px auto 22px; width: fit-content;
+    box-shadow: var(--shadow-sm); border: 3px solid var(--paper);
+    animation: pop 0.35s var(--ease) 0.1s backwards;
+  }
+  @keyframes pop { from { transform: scale(0.85); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+  h1.verify-title { font-size: 16px; margin: 0 0 20px; text-align: center; color: var(--ink-soft); font-weight: 500; }
+  .field { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+  .field:last-of-type { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+  .field label { display: block; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint); font-weight: 700; margin-bottom: 3px; }
+  .field span { font-size: 14.5px; color: var(--ink); }
+  .field.mono span { font-family: var(--font-mono); }
+
+  a.download {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    margin-top: 22px; color: white; background: var(--brand); font-weight: 600;
+    text-decoration: none; font-size: 13.5px; padding: 12px; border-radius: var(--radius-sm);
+    transition: background 0.15s var(--ease), transform 0.12s var(--ease);
+  }
+  a.download:hover { background: var(--brand-dark); }
+  a.download:active { transform: translateY(1px); }
+
+  .error { color: var(--red); text-align: center; padding: 50px 20px; font-size: 14px; }
 </style>
 </head>
 <body>
 <div class="internal-nav" id="internalNav">
   <a href="/dashboard.html">&larr; Kembali ke Dashboard</a>
-  <a href="#" id="signAgainLink">+ Tambah TTD Lagi di Dokumen Ini</a>
+  <a href="#" id="signAgainLink">+ Tambah TTD Lagi</a>
 </div>
-<div class="card" id="card">Memuat...</div>
+<div class="card verify-card" id="card">
+  <div class="verify-topband">
+    <div class="verify-logo-ring"><img src="/logo-rama.png" alt="Logo PT REMS"></div>
+    <div class="company-name">PT. Rama Emerald Multi Sukses</div>
+  </div>
+  <div class="verify-body" id="cardBody">Memuat...</div>
+</div>
 <script>
 const parts = window.location.pathname.split('/');
 const signatureId = parts[parts.length - 1];
@@ -45,9 +96,9 @@ async function checkInternalNav(documentId) {
 async function load() {
   const res = await fetch(`/api/verify/${signatureId}`);
   const data = await res.json();
-  const card = document.getElementById('card');
+  const body = document.getElementById('cardBody');
   if (!res.ok) {
-    card.innerHTML = `<div class="error">${data.error}</div>`;
+    body.innerHTML = `<div class="error">${data.error}</div>`;
     return;
   }
   const s = data.signature;
@@ -59,13 +110,11 @@ async function load() {
   const signerLine = s.signer_jabatan
     ? `${s.signer_name} &mdash; ${s.signer_jabatan}, ${s.signer_department || '-'}`
     : `${s.signer_name} (${s.signer_department || '-'})`;
-  card.innerHTML = `
-    <img src="/logo-rama.png" alt="Logo PT REMS" class="verify-logo">
-    <div class="company-name">PT. Rama Emerald Multi Sukses</div>
+  body.innerHTML = `
     <div class="valid-badge">✓ Tanda Tangan Valid</div>
-    <h1>Detail Dokumen Tertandatangani</h1>
+    <h1 class="verify-title">Detail Dokumen Tertandatangani</h1>
     <div class="field"><label>Nama Dokumen</label><span>${s.doc_name}</span></div>
-    <div class="field"><label>Nomor Dokumen</label><span>${s.doc_number}</span></div>
+    <div class="field mono"><label>Nomor Dokumen</label><span>${s.doc_number}</span></div>
     <div class="field"><label>Departemen</label><span>${s.department}</span></div>
     <div class="field"><label>Ditandatangani oleh</label><span>${signerLine}</span></div>
     <div class="field"><label>Waktu Tanda Tangan</label><span>${signedDate}</span></div>

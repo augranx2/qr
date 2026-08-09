@@ -4,32 +4,45 @@
 <meta charset="UTF-8">
 <title>Login - TTD QR Code</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
 <style>
-  * { box-sizing: border-box; }
-  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; background: #0f172a; height: 100vh; margin: 0; display: flex; align-items: center; justify-content: center; }
-  .card { background: white; padding: 40px; border-radius: 12px; width: 360px; box-shadow: 0 10px 40px rgba(0,0,0,0.3); }
-  .logo { display: block; margin: 0 auto 16px; width: 64px; height: 64px; object-fit: contain; }
-  h1 { font-size: 20px; margin: 0 0 4px; color: #0f172a; text-align: center; }
-  p.sub { color: #64748b; font-size: 13px; margin: 0 0 24px; text-align: center; }
-  label { font-size: 13px; color: #334155; font-weight: 600; display: block; margin-bottom: 6px; }
-  input { width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; margin-bottom: 16px; }
-  button { width: 100%; padding: 11px; background: #0f172a; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; }
-  button:hover { background: #1e293b; }
-  .error { color: #dc2626; font-size: 13px; margin-bottom: 12px; display: none; }
+  body {
+    height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(circle at 20% 15%, #16332B 0%, #0F2620 45%, #0B1D18 100%);
+    background-attachment: fixed;
+  }
+  .login-card { padding: 44px 40px; width: 380px; }
+  .login-logo {
+    display: flex; align-items: center; justify-content: center;
+    width: 68px; height: 68px; margin: 0 auto 20px;
+    background: white; border-radius: 16px; box-shadow: var(--shadow-md);
+  }
+  .login-logo img { width: 44px; height: 44px; object-fit: contain; }
+  h1.login-title { font-size: 21px; margin: 0 0 6px; text-align: center; }
+  p.login-sub { color: var(--ink-soft); font-size: 13px; margin: 0 0 28px; text-align: center; line-height: 1.6; }
+  p.login-sub b { color: var(--ink); }
+  #loginForm label { margin-top: 14px; }
+  #loginForm label:first-of-type { margin-top: 0; }
+  .error {
+    display: none; background: var(--red-soft); color: var(--red); border: 1px solid #F0C9C5;
+    padding: 10px 14px; border-radius: var(--radius-sm); font-size: 13px; margin-bottom: 16px; text-align: left;
+  }
 </style>
 </head>
 <body>
-  <div class="card">
-    <img src="/logo-rama.png" alt="Logo PT. Rama Emerald Multi Sukses" class="logo">
-    <h1>Tanda Tangan Elektronik QR</h1>
-    <p class="sub">PT. Rama Emerald Multi Sukses<br>Login menggunakan username personil Anda</p>
+  <div class="card login-card">
+    <div class="login-logo"><img src="/logo-rama.png" alt="Logo PT. Rama Emerald Multi Sukses"></div>
+    <h1 class="login-title">Tanda Tangan Elektronik QR</h1>
+    <p class="login-sub"><b>PT. Rama Emerald Multi Sukses</b><br>Login menggunakan username personil Anda</p>
     <div class="error" id="err"></div>
     <form id="loginForm">
       <label>Username</label>
       <input type="text" id="username" required autocomplete="username">
       <label>Password</label>
       <input type="password" id="password" required autocomplete="current-password">
-      <button type="submit">Masuk</button>
+      <button type="submit" class="primary" style="margin-top:20px;">Masuk</button>
     </form>
   </div>
 <script>

@@ -1,0 +1,305 @@
+/* ============================================================
+   TTD Elektronik QR — PT REMS — Shared Design System
+   Typeface: Space Grotesk (display) + IBM Plex Sans (body) + IBM Plex Mono (codes/data)
+   Palette grounded in pharma QA: clinical teal for trust/quality,
+   warm paper background (cool-toned, not the generic cream), amber/green/red
+   as functional status colors matching the document lifecycle.
+   ============================================================ */
+
+:root {
+  --ink: #13231F;
+  --ink-soft: #4B5D57;
+  --ink-faint: #8CA098;
+
+  --paper: #F1F5F3;
+  --card: #FFFFFF;
+
+  --border: #DCE6E2;
+  --border-strong: #B9CCC5;
+
+  --brand: #0B6E5C;
+  --brand-dark: #085243;
+  --brand-soft: #E3F2ED;
+
+  --amber: #A8650A;
+  --amber-soft: #FBF0DD;
+  --green: #1B7A4D;
+  --green-soft: #E4F5EA;
+  --red: #B0342A;
+  --red-soft: #FBE8E6;
+  --slate: #475A66;
+  --slate-soft: #EBF0F3;
+
+  --radius-sm: 8px;
+  --radius: 12px;
+  --radius-lg: 16px;
+
+  --shadow-sm: 0 1px 2px rgba(19, 35, 31, 0.06), 0 1px 1px rgba(19, 35, 31, 0.04);
+  --shadow-md: 0 8px 28px rgba(19, 35, 31, 0.10);
+
+  --font-display: 'Space Grotesk', -apple-system, Segoe UI, sans-serif;
+  --font-body: 'IBM Plex Sans', -apple-system, Segoe UI, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: var(--font-body);
+  background: var(--paper);
+  color: var(--ink);
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, .font-display { font-family: var(--font-display); letter-spacing: -0.01em; }
+
+/* ---------------- Topbar ---------------- */
+header {
+  background: var(--ink);
+  background-image: linear-gradient(135deg, #0F2620 0%, #13231F 60%);
+  color: white;
+  padding: 14px 28px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  box-shadow: var(--shadow-md);
+}
+header h1 {
+  font-size: 16px;
+  margin: 0;
+  font-weight: 600;
+}
+header a {
+  color: #BFE3D6;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 500;
+  position: relative;
+  transition: color 0.15s var(--ease);
+}
+header a:hover { color: #FFFFFF; }
+header a::after {
+  content: '';
+  position: absolute; left: 0; right: 100%; bottom: -3px;
+  height: 1.5px; background: currentColor;
+  transition: right 0.2s var(--ease);
+}
+header a:hover::after { right: 0; }
+
+.logo-chip {
+  background: white;
+  border-radius: var(--radius-sm);
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-sm);
+}
+.logo-chip img { width: 24px; height: 24px; object-fit: contain; display: block; }
+
+/* ---------------- Layout ---------------- */
+main { max-width: 960px; margin: 32px auto; padding: 0 20px 60px; }
+
+.panel {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 24px;
+  margin-bottom: 24px;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.2s var(--ease);
+}
+.panel h2 {
+  font-size: 16px;
+  margin: 0 0 6px;
+  font-weight: 600;
+}
+.panel p.sub, .sub {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  margin: 0 0 18px;
+  line-height: 1.5;
+}
+
+.card {
+  background: var(--card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  animation: rise 0.4s var(--ease);
+}
+@keyframes rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ---------------- Forms ---------------- */
+.row { display: flex; gap: 14px; margin-bottom: 14px; flex-wrap: wrap; }
+.row > div { flex: 1; min-width: 160px; }
+
+label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  display: block;
+  margin-bottom: 5px;
+  letter-spacing: 0.01em;
+}
+
+input, select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  font-size: 13.5px;
+  font-family: var(--font-body);
+  background: var(--card);
+  color: var(--ink);
+  transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
+}
+input:hover, select:hover { border-color: var(--brand); }
+input:focus, select:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-soft);
+}
+input[type="checkbox"] {
+  width: 16px; height: 16px; padding: 0; border-radius: 4px;
+  accent-color: var(--brand); cursor: pointer; flex-shrink: 0;
+}
+
+/* ---------------- Buttons ---------------- */
+button, .primary, .secondary, .danger {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 13px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: transform 0.12s var(--ease), box-shadow 0.15s var(--ease), background 0.15s var(--ease), border-color 0.15s var(--ease);
+  border: 1px solid transparent;
+}
+button:active, .primary:active, .secondary:active, .danger:active { transform: translateY(1px); }
+
+button { background: var(--ink); color: white; padding: 9px 16px; border: none; }
+button:hover { background: var(--brand-dark); }
+
+.primary {
+  background: var(--brand);
+  color: white;
+  padding: 11px 18px;
+  width: 100%;
+  margin-top: 4px;
+}
+.primary:hover { background: var(--brand-dark); box-shadow: var(--shadow-sm); }
+.primary:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+
+.secondary {
+  background: white;
+  color: var(--ink);
+  border: 1px solid var(--border-strong);
+  padding: 7px 12px;
+}
+.secondary:hover { border-color: var(--brand); color: var(--brand-dark); }
+
+.danger {
+  background: white;
+  color: var(--red);
+  border: 1px solid #F0C9C5;
+  padding: 7px 12px;
+}
+.danger:hover { background: var(--red-soft); border-color: var(--red); }
+
+/* ---------------- Tables ---------------- */
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 11px 10px; border-bottom: 1px solid var(--border); }
+th {
+  color: var(--ink-faint);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+tbody tr { transition: background 0.12s var(--ease); }
+tbody tr:hover { background: var(--paper); }
+tbody tr:last-child td { border-bottom: none; }
+
+/* Document/reference numbers read like controlled-document codes */
+td:nth-child(2), .folder-id, .doc-info b + text { font-family: var(--font-mono); }
+
+/* ---------------- Badges (status pills) ---------------- */
+.badge {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  background: var(--slate-soft);
+  color: var(--slate);
+  display: inline-block;
+}
+.badge.admin { background: var(--brand-soft); color: var(--brand-dark); }
+.badge.pending { background: var(--amber-soft); color: var(--amber); }
+.badge.signed { background: var(--green-soft); color: var(--green); }
+.badge.login { background: var(--green-soft); color: var(--green); }
+.badge.logout { background: var(--slate-soft); color: var(--slate); }
+.badge.upload_document { background: var(--brand-soft); color: var(--brand-dark); }
+.badge.sign_document { background: var(--amber-soft); color: var(--amber); }
+
+/* ---------------- Messages / alerts ---------------- */
+.msg {
+  font-size: 13px;
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  display: none;
+  animation: rise 0.25s var(--ease);
+  border: 1px solid transparent;
+}
+.msg.error, .error { background: var(--red-soft); color: var(--red); border-color: #F0C9C5; }
+.msg.success { background: var(--green-soft); color: var(--green); border-color: #BFE3CD; }
+.error { text-align: center; padding: 40px 0; font-size: 14px; border: none; background: none; }
+
+/* ---------------- Links styled as actions ---------------- */
+a.action {
+  color: var(--brand);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 12.5px;
+  transition: color 0.15s var(--ease);
+}
+a.action:hover { color: var(--brand-dark); text-decoration: underline; }
+
+/* ---------------- Utility ---------------- */
+.who { font-size: 13px; color: #BFE3D6; font-weight: 500; }
+.empty { font-size: 13px; color: var(--ink-faint); padding: 24px 0; text-align: center; }
+
+.dept-checkbox-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px 18px; }
+.dept-checkbox-grid label {
+  display: flex !important; align-items: center; gap: 8px;
+  font-weight: 400 !important; margin-bottom: 0 !important; cursor: pointer; font-size: 13px;
+  transition: color 0.15s var(--ease);
+}
+.dept-checkbox-grid label:hover { color: var(--brand-dark); }
+
+/* ---------------- Responsive ---------------- */
+@media (max-width: 720px) {
+  header { padding: 12px 16px; flex-wrap: wrap; gap: 8px; }
+  main { margin: 20px auto; padding: 0 14px 40px; }
+  .panel { padding: 18px; border-radius: var(--radius-sm); }
+  .row { flex-direction: column; gap: 10px; }
+  table, thead, tbody, th, td, tr { display: block; }
+  thead { display: none; }
+  tbody tr {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    margin-bottom: 10px;
+    padding: 8px 12px;
+  }
+  td { border-bottom: none; padding: 6px 0; }
+  td:empty { display: none; }
+}

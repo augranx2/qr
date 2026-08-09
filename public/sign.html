@@ -5,41 +5,42 @@
 <title>Penempatan QR - TTD Elektronik</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
 <style>
-  * { box-sizing: border-box; }
-  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; background: #f8fafc; margin: 0; color: #0f172a; }
-  header { background: #0f172a; color: white; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; }
-  header h1 { font-size: 16px; margin: 0; }
-  header a { color: #93c5fd; text-decoration: none; font-size: 13px; }
-  main { max-width: 900px; margin: 24px auto; padding: 0 16px; display: flex; gap: 20px; }
-  .doc-info { background: white; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; margin-bottom: 16px; font-size: 13px; }
-  .doc-info b { display: inline-block; width: 120px; color: #475569; }
-  .canvas-wrap { position: relative; background: white; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; display: inline-block; }
+  main { display: flex; gap: 24px; align-items: flex-start; }
+  main > div:first-child { flex: 1; min-width: 0; }
+  .doc-info { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; margin-bottom: 16px; font-size: 13px; box-shadow: var(--shadow-sm); }
+  .doc-info b { display: inline-block; width: 120px; color: var(--ink-soft); }
+  .canvas-wrap { position: relative; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; display: inline-block; box-shadow: var(--shadow-sm); }
   #pageCanvas, #imgPreview { display: block; max-width: 100%; }
-  .qr-box { position: absolute; border: 2px dashed #2563eb; background: rgba(37,99,235,0.12); cursor: move; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #1d4ed8; font-weight: 700; user-select: none; }
-  .controls { width: 260px; }
-  .panel { background: white; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
-  label { font-size: 12px; font-weight: 600; color: #475569; display: block; margin-bottom: 6px; }
-  input[type=range] { width: 100%; }
-  button.primary { width: 100%; background: #0f172a; color: white; border: none; padding: 11px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 13px; margin-top: 8px; }
-  button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
-  .hint { font-size: 12px; color: #64748b; margin-top: 8px; }
-  .pager { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; font-size: 13px; }
-  .pager button { padding: 4px 10px; border: 1px solid #cbd5e1; background: white; border-radius: 6px; cursor: pointer; }
+  .qr-box {
+    position: absolute; border: 2px dashed var(--brand); background: rgba(11, 110, 92, 0.12);
+    cursor: move; display: flex; align-items: center; justify-content: center;
+    font-size: 10px; color: var(--brand-dark); font-weight: 700; user-select: none;
+    border-radius: 4px; transition: box-shadow 0.15s var(--ease);
+  }
+  .qr-box:hover { box-shadow: 0 0 0 4px rgba(11, 110, 92, 0.1); }
+  .controls { width: 270px; flex-shrink: 0; }
+  input[type=range] { width: 100%; accent-color: var(--brand); }
+  .hint { font-size: 12px; color: var(--ink-soft); margin-top: 10px; line-height: 1.5; }
+  .pager { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; font-size: 13px; }
+  .pager button { padding: 5px 12px; border: 1px solid var(--border-strong); background: var(--card); border-radius: var(--radius-sm); cursor: pointer; font-weight: 500; transition: border-color 0.15s var(--ease); }
+  .pager button:hover { border-color: var(--brand); color: var(--brand-dark); }
+  @media (max-width: 720px) { main { flex-direction: column; } .controls { width: 100%; } }
 </style>
 </head>
 <body>
 <header>
-  <div style="display:flex; align-items:center; gap:10px;">
-    <div style="background:white; border-radius:6px; padding:3px; display:flex; align-items:center; justify-content:center;">
-      <img src="/logo-rama.png" alt="Logo PT REMS" style="width:26px; height:26px; object-fit:contain; display:block;">
-    </div>
+  <div style="display:flex; align-items:center; gap:12px;">
+    <div class="logo-chip"><img src="/logo-rama.png" alt="Logo PT REMS"></div>
     <h1>Penempatan Tanda Tangan QR</h1>
   </div>
   <a href="/dashboard.html">&larr; Kembali ke Dashboard</a>
 </header>
 <main>
-  <div style="flex:1;">
+  <div>
     <div class="doc-info" id="docInfo">Memuat dokumen...</div>
     <div class="pager" id="pager" style="display:none;">
       <button onclick="changePage(-1)">‹ Sebelumnya</button>
@@ -57,9 +58,9 @@
       <label>Ukuran QR Code</label>
       <input type="range" id="qrSize" min="5" max="30" value="12">
       <div class="hint">Geser kotak QR di atas dokumen ke posisi yang diinginkan, sesuaikan ukuran, lalu klik Tandatangani. Setelah tersimpan, Anda bisa langsung menempel QR lagi di posisi/halaman lain tanpa perlu kembali ke Dashboard dulu.</div>
-      <div class="msg" id="signMsg" style="display:none; margin-top:10px; padding:8px 10px; border-radius:6px; font-size:12px;"></div>
+      <div class="msg" id="signMsg" style="margin-top:10px;"></div>
       <button class="primary" id="signBtn" onclick="submitSignature()">Tandatangani Dokumen</button>
-      <button class="primary" id="doneBtn" onclick="window.location.href='/dashboard.html'" style="background:white; color:#0f172a; border:1px solid #cbd5e1; margin-top:8px;">Selesai, Kembali ke Dashboard</button>
+      <button class="secondary" id="doneBtn" onclick="window.location.href='/dashboard.html'" style="width:100%; margin-top:10px; padding:11px;">Selesai, Kembali ke Dashboard</button>
     </div>
   </div>
 </main>
@@ -208,14 +209,12 @@ async function submitSignature() {
     if (!res.ok) throw new Error(data.error);
     placedThisSession++;
     msgEl.textContent = `QR ke-${placedThisSession} berhasil ditempel di halaman ${currentPage}. Silakan tempel QR lagi kalau masih ada, atau klik Selesai.`;
-    msgEl.style.background = '#dcfce7';
-    msgEl.style.color = '#166534';
+    msgEl.className = 'msg success';
     msgEl.style.display = 'block';
     await loadDoc(false); // refresh preview to show the QR we just placed, without re-attaching drag listeners
   } catch (err) {
     msgEl.textContent = err.message;
-    msgEl.style.background = '#fee2e2';
-    msgEl.style.color = '#991b1b';
+    msgEl.className = 'msg error';
     msgEl.style.display = 'block';
   } finally {
     btn.disabled = false;

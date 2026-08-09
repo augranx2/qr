@@ -4,47 +4,23 @@
 <meta charset="UTF-8">
 <title>Dashboard - TTD QR Code</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
 <style>
-  * { box-sizing: border-box; }
-  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; background: #f8fafc; margin: 0; color: #0f172a; }
-  header { background: #0f172a; color: white; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; }
-  header h1 { font-size: 16px; margin: 0; }
-  header .who { font-size: 13px; opacity: 0.8; }
-  header button { background: transparent; border: 1px solid #475569; color: white; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; }
-  main { max-width: 900px; margin: 24px auto; padding: 0 16px; }
-  .panel { background: white; border-radius: 10px; padding: 20px; margin-bottom: 20px; border: 1px solid #e2e8f0; }
-  .panel h2 { font-size: 15px; margin: 0 0 16px; }
-  .row { display: flex; gap: 12px; margin-bottom: 12px; }
-  .row > div { flex: 1; }
-  label { font-size: 12px; font-weight: 600; color: #475569; display: block; margin-bottom: 4px; }
-  input, select { width: 100%; padding: 9px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; }
-  input[type="checkbox"] { width: auto; padding: 0; border: none; border-radius: 0; }
-  .dept-checkbox-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px 16px; }
-  .dept-checkbox-grid label { display: flex !important; align-items: center; gap: 8px; font-weight: 400 !important; margin-bottom: 0 !important; cursor: pointer; }
-  button.primary { background: #0f172a; color: white; border: none; padding: 10px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 13px; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid #f1f5f9; }
-  th { color: #64748b; font-weight: 600; font-size: 12px; }
-  .badge { padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
-  .badge.pending { background: #fef3c7; color: #92400e; }
-  .badge.signed { background: #dcfce7; color: #166534; }
-  a.action { color: #2563eb; text-decoration: none; font-size: 13px; font-weight: 600; }
-  .msg { font-size: 13px; margin-bottom: 12px; padding: 8px 12px; border-radius: 6px; display: none; }
-  .msg.error { background: #fee2e2; color: #991b1b; }
-  .msg.success { background: #dcfce7; color: #166534; }
+  #allowedDeptCheckboxes { border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 14px; max-height: 220px; overflow-y: auto; }
+  .dept-hint { font-size: 11px; color: var(--ink-faint); margin-top: 6px; }
 </style>
 </head>
 <body>
 <header>
-  <div style="display:flex; align-items:center; gap:10px;">
-    <div style="background:white; border-radius:6px; padding:3px; display:flex; align-items:center; justify-content:center;">
-      <img src="/logo-rama.png" alt="Logo PT REMS" style="width:26px; height:26px; object-fit:contain; display:block;">
-    </div>
+  <div style="display:flex; align-items:center; gap:12px;">
+    <div class="logo-chip"><img src="/logo-rama.png" alt="Logo PT REMS"></div>
     <h1>TTD Elektronik QR Code — PT REMS</h1>
   </div>
-  <div style="display:flex; align-items:center; gap:12px;">
-    <a id="adminLink" href="/admin.html" style="display:none; color:#93c5fd; text-decoration:none; font-size:13px; font-weight:600;">Kelola User &amp; Departemen</a>
-    <a id="auditLink" href="/audit.html" style="display:none; color:#93c5fd; text-decoration:none; font-size:13px; font-weight:600;">Audit Trail</a>
+  <div style="display:flex; align-items:center; gap:18px;">
+    <a id="adminLink" href="/admin.html" style="display:none;">Kelola User &amp; Departemen</a>
+    <a id="auditLink" href="/audit.html" style="display:none;">Audit Trail</a>
     <span class="who" id="whoami"></span>
     <button onclick="logout()">Keluar</button>
   </div>
@@ -77,8 +53,8 @@
       <div class="row">
         <div style="flex:1;">
           <label>Departemen yang Boleh Akses/TTD Dokumen Ini</label>
-          <div id="allowedDeptCheckboxes" class="dept-checkbox-grid" style="border:1px solid #cbd5e1; border-radius:6px; padding:12px; max-height:220px; overflow-y:auto; font-size:13px;"></div>
-          <div style="font-size:11px; color:#94a3b8; margin-top:4px;">Departemen yang tidak dicentang tidak akan bisa melihat/menandatangani dokumen ini (kecuali admin).</div>
+          <div id="allowedDeptCheckboxes" class="dept-checkbox-grid"></div>
+          <div class="dept-hint">Departemen yang tidak dicentang tidak akan bisa melihat/menandatangani dokumen ini (kecuali admin).</div>
         </div>
       </div>
       <button type="submit" class="primary">Upload</button>
@@ -93,31 +69,31 @@
       </thead>
       <tbody id="pendingDocList"></tbody>
     </table>
-    <p id="pendingEmpty" style="font-size:13px; color:#94a3b8; display:none; margin-top:8px;">Tidak ada dokumen yang menunggu TTD.</p>
+    <p id="pendingEmpty" class="empty" style="display:none;">Tidak ada dokumen yang menunggu TTD.</p>
   </div>
 
   <div class="panel">
     <h2>Sudah TTD</h2>
-    <p class="sub" style="font-size:12px; color:#64748b; margin:-8px 0 16px;">Dokumen bisa ditandatangani lagi kalau perlu TTD dari departemen/personil lain di dokumen yang sama.</p>
+    <p class="sub">Dokumen bisa ditandatangani lagi kalau perlu TTD dari departemen/personil lain di dokumen yang sama.</p>
     <table>
       <thead>
         <tr><th>Nama Dokumen</th><th>No. Dokumen</th><th>Departemen</th><th>Diupload oleh</th><th>Jumlah TTD</th><th></th></tr>
       </thead>
       <tbody id="signedDocList"></tbody>
     </table>
-    <p id="signedEmpty" style="font-size:13px; color:#94a3b8; display:none; margin-top:8px;">Belum ada dokumen yang ditandatangani.</p>
+    <p id="signedEmpty" class="empty" style="display:none;">Belum ada dokumen yang ditandatangani.</p>
   </div>
 
   <div class="panel">
     <h2>Diarsipkan</h2>
-    <p class="sub" style="font-size:12px; color:#64748b; margin:-8px 0 16px;">Dokumen yang diarsipkan tidak hilang - QR yang sudah dicetak tetap valid kalau di-scan. Bisa dikembalikan kapan saja.</p>
+    <p class="sub">Dokumen yang diarsipkan tidak hilang - QR yang sudah dicetak tetap valid kalau di-scan. Bisa dikembalikan kapan saja.</p>
     <table>
       <thead>
         <tr><th>Nama Dokumen</th><th>No. Dokumen</th><th>Departemen</th><th>Jumlah TTD</th><th></th></tr>
       </thead>
       <tbody id="archivedDocList"></tbody>
     </table>
-    <p id="archivedEmpty" style="font-size:13px; color:#94a3b8; display:none; margin-top:8px;">Belum ada dokumen yang diarsipkan.</p>
+    <p id="archivedEmpty" class="empty" style="display:none;">Belum ada dokumen yang diarsipkan.</p>
   </div>
 </main>
 <script>
@@ -196,10 +172,10 @@ function canManage(doc) {
 
 function manageButtonsHtml(doc) {
   if (!canManage(doc)) return '';
-  const archiveBtn = `<a class="action" href="#" onclick="archiveDoc('${doc.id}', true); return false;" style="margin-left:10px; color:#92400e;">Arsipkan</a>`;
+  const archiveBtn = `<a class="action" href="#" onclick="archiveDoc('${doc.id}', true); return false;" style="margin-left:10px; color:var(--amber);">Arsipkan</a>`;
   const deleteBtn = doc.signature_count > 0
     ? '' // signed documents can't be permanently deleted - archive only, to keep printed QR codes valid
-    : `<a class="action" href="#" onclick="deleteDoc('${doc.id}'); return false;" style="margin-left:10px; color:#dc2626;">Hapus</a>`;
+    : `<a class="action" href="#" onclick="deleteDoc('${doc.id}'); return false;" style="margin-left:10px; color:var(--red);">Hapus</a>`;
   return archiveBtn + deleteBtn;
 }
 
