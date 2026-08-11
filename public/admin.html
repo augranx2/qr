@@ -85,21 +85,65 @@ async function checkAuth() {
 }
 
 // ---- Users ----
+let cachedUsers = [];
+let cachedDepartmentNames = [];
+
 async function loadUsers() {
   const res = await fetch('/api/users');
   const data = await res.json();
+  cachedUsers = data.users;
+  renderUserRows();
+}
+
+function renderUserRows() {
   const tbody = document.getElementById('userList');
   tbody.innerHTML = '';
-  data.users.forEach(u => {
+  cachedUsers.forEach(u => {
     const tr = document.createElement('tr');
+    tr.id = `user-row-${u.id}`;
     const roleBadge = u.role === 'admin' ? '<span class="badge admin">Admin</span>' : '<span class="badge">Personil</span>';
     tr.innerHTML = `<td>${u.username}</td><td>${u.full_name}</td><td>${u.jabatan || '-'}</td><td>${u.department || '-'}</td><td>${roleBadge}</td>
       <td class="actions-cell">
+        <button class="secondary" onclick="editUserRow(${u.id})">Edit</button>
         <button class="secondary" onclick="resetPassword(${u.id}, '${u.username}')">Reset Password</button>
         <button class="danger" onclick="deleteUser(${u.id}, '${u.username}')">Hapus</button>
       </td>`;
     tbody.appendChild(tr);
   });
+}
+
+function editUserRow(userId) {
+  const u = cachedUsers.find(x => x.id === userId);
+  if (!u) return;
+  const deptOptions = cachedDepartmentNames.map(d => `<option value="${d}" ${d === u.department ? 'selected' : ''}>${d}</option>`).join('');
+  const tr = document.getElementById(`user-row-${userId}`);
+  tr.innerHTML = `
+    <td>${u.username}</td>
+    <td><input type="text" id="edit_full_name_${userId}" value="${u.full_name}" style="min-width:140px;"></td>
+    <td><input type="text" id="edit_jabatan_${userId}" value="${u.jabatan || ''}" style="min-width:130px;"></td>
+    <td><select id="edit_department_${userId}" style="min-width:150px;">${deptOptions}</select></td>
+    <td><select id="edit_role_${userId}">
+        <option value="personil" ${u.role === 'personil' ? 'selected' : ''}>Personil</option>
+        <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option>
+      </select></td>
+    <td class="actions-cell">
+      <button class="primary" style="width:auto; padding:6px 12px; font-size:12px;" onclick="saveUserEdit(${userId})">Simpan</button>
+      <button class="secondary" onclick="renderUserRows()">Batal</button>
+    </td>`;
+}
+
+async function saveUserEdit(userId) {
+  const body = {
+    full_name: document.getElementById(`edit_full_name_${userId}`).value,
+    jabatan: document.getElementById(`edit_jabatan_${userId}`).value,
+    department: document.getElementById(`edit_department_${userId}`).value,
+    role: document.getElementById(`edit_role_${userId}`).value
+  };
+  const res = await fetch(`/api/users/${userId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const data = await res.json();
+  if (!res.ok) { alert(data.error); return; }
+  alert('Profil berhasil diperbarui. Ingatkan personil ini untuk logout lalu login ulang, supaya perubahan langsung berlaku di sesi mereka.');
+  loadUsers();
 }
 
 document.getElementById('userForm').addEventListener('submit', async (e) => {
@@ -148,6 +192,7 @@ async function deleteUser(userId, username) {
 async function loadDepartments() {
   const res = await fetch('/api/departments');
   const data = await res.json();
+  cachedDepartmentNames = data.departments.map(d => d.name);
 
   const select = document.getElementById('new_department');
   select.innerHTML = data.departments.map(d => `<option value="${d.name}">${d.name}</option>`).join('');

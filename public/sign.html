@@ -90,13 +90,23 @@ async function loadDoc(isInitial) {
   const data = await res.json();
   if (!res.ok) { document.getElementById('docInfo').textContent = data.error; return; }
   doc = data.document;
-  const ttdInfo = doc.signature_count > 0
-    ? `<div><b>TTD Sebelumnya:</b> ${doc.signature_count} tanda tangan sudah ada di dokumen ini &mdash; QR baru akan ditambahkan di atasnya</div>`
-    : '';
+  const req = doc.required_departments || [];
+  const signed = doc.signed_departments || [];
+  const missing = req.filter(d => !signed.includes(d));
+  let ttdInfo = '';
+  if (doc.signature_count > 0) {
+    const statusLabel = doc.completion_status === 'complete'
+      ? `<span style="color:var(--green); font-weight:600;">Lengkap (${signed.length}/${req.length} departemen)</span>`
+      : `<span style="color:var(--amber); font-weight:600;">Sebagian (${signed.length}/${req.length} departemen)</span>`;
+    const missingLine = missing.length > 0 ? ` &mdash; menunggu: ${missing.join(', ')}` : '';
+    ttdInfo = `<div><b>Status TTD:</b> ${statusLabel}${missingLine}</div>
+               <div><b>TTD Sebelumnya:</b> ${doc.signature_count} tanda tangan &mdash; QR baru akan ditambahkan di atasnya</div>`;
+  }
   document.getElementById('docInfo').innerHTML =
     `<div><b>Nama Dokumen:</b> ${doc.doc_name}</div>
      <div><b>No. Dokumen:</b> ${doc.doc_number}</div>
      <div><b>Departemen:</b> ${doc.department}</div>
+     <div><b>Wajib TTD dari:</b> ${req.join(', ')}</div>
      ${ttdInfo}`;
 
   // cache-bust so the browser always fetches the latest version (with the QR we just added)

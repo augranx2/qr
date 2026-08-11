@@ -134,6 +134,29 @@ async function ensureSeeded() {
   return seedPromise;
 }
 
+// Computes, for one document: which departments have signed it at least once, and
+// whether ALL required departments (doc.allowed_departments) have signed yet -
+// "signature_count > 0" alone isn't "done" if multiple departments must sign the
+// same document (e.g. dibuat QA, diperiksa Produksi, disetujui Manager).
+function decorateDocument(doc, allSignatures, usersById) {
+  const docSigs = allSignatures.filter(s => s.document_id === doc.id);
+  const signedDepartments = [...new Set(
+    docSigs.map(s => s.signer_department || (usersById.get(s.signed_by) && usersById.get(s.signed_by).department) || null).filter(Boolean)
+  )];
+  const requiredDepartments = (doc.allowed_departments && doc.allowed_departments.length > 0) ? doc.allowed_departments : [doc.department];
+  const isComplete = requiredDepartments.every(dept => signedDepartments.includes(dept));
+  let completion_status = 'pending'; // no signatures yet
+  if (docSigs.length > 0) completion_status = isComplete ? 'complete' : 'partial';
+  return {
+    ...doc,
+    uploaded_by_name: usersById.has(doc.uploaded_by) ? usersById.get(doc.uploaded_by).full_name : 'Unknown',
+    signature_count: docSigs.length,
+    required_departments: requiredDepartments,
+    signed_departments: signedDepartments,
+    completion_status
+  };
+}
+
 module.exports = {
   isUsingKV: KV_CONFIGURED,
 
@@ -231,6 +254,30 @@ module.exports = {
     store.users.splice(idx, 1);
     persistFileStore();
   },
+  // Edits an existing user's profile fields (not password - use resetUserPassword for that).
+  // Only overwrites fields that are explicitly provided (undefined = leave unchanged).
+  async updateUser(userId, { full_name, jabatan, department, role }) {
+    await ensureSeeded();
+    if (KV_CONFIGURED) {
+      const raw = await kv.hget(K.users, String(userId));
+      if (!raw) throw new Error('User tidak ditemukan');
+      const user = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      if (full_name !== undefined) user.full_name = full_name;
+      if (jabatan !== undefined) user.jabatan = jabatan;
+      if (department !== undefined) user.department = department;
+      if (role !== undefined) user.role = role;
+      await kv.hset(K.users, { [userId]: JSON.stringify(user) });
+      return;
+    }
+    const store = loadFileStore();
+    const user = store.users.find(u => u.id === userId);
+    if (!user) throw new Error('User tidak ditemukan');
+    if (full_name !== undefined) user.full_name = full_name;
+    if (jabatan !== undefined) user.jabatan = jabatan;
+    if (department !== undefined) user.department = department;
+    if (role !== undefined) user.role = role;
+    persistFileStore();
+  },
 
   // ---- documents ----
   async createDocument(doc) {
@@ -265,22 +312,14 @@ module.exports = {
       const usersById = new Map(users.map(u => [u.id, u]));
       return docs
         .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-        .map(d => ({
-          ...d,
-          uploaded_by_name: usersById.has(d.uploaded_by) ? usersById.get(d.uploaded_by).full_name : 'Unknown',
-          signature_count: sigs.filter(s => s.document_id === d.id).length
-        }));
+        .map(d => decorateDocument(d, sigs, usersById));
     }
     const store = loadFileStore();
     const usersById = new Map(store.users.map(u => [u.id, u]));
     return store.documents
       .slice()
       .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-      .map(d => ({
-        ...d,
-        uploaded_by_name: usersById.has(d.uploaded_by) ? usersById.get(d.uploaded_by).full_name : 'Unknown',
-        signature_count: store.signatures.filter(s => s.document_id === d.id).length
-      }));
+      .map(d => decorateDocument(d, store.signatures, usersById));
   },
   async markDocumentSigned(id, signed_filename, driveInfo) {
     await ensureSeeded();

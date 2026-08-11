@@ -62,6 +62,10 @@
     </form>
   </div>
 
+  <div class="panel" style="padding:14px 24px;">
+    <input type="text" id="searchBox" placeholder="Cari nama dokumen atau nomor dokumen..." style="font-size:14px;">
+  </div>
+
   <div class="panel">
     <h2>Belum TTD</h2>
     <table>
@@ -74,15 +78,27 @@
   </div>
 
   <div class="panel">
-    <h2>Sudah TTD</h2>
-    <p class="sub">Dokumen bisa ditandatangani lagi kalau perlu TTD dari departemen/personil lain di dokumen yang sama.</p>
+    <h2>Sebagian TTD</h2>
+    <p class="sub">Sudah ada tanda tangan, tapi belum semua departemen yang wajib TTD menandatangani.</p>
+    <table>
+      <thead>
+        <tr><th>Nama Dokumen</th><th>No. Dokumen</th><th>Progres TTD</th><th>Diupload oleh</th><th></th></tr>
+      </thead>
+      <tbody id="partialDocList"></tbody>
+    </table>
+    <p id="partialEmpty" class="empty" style="display:none;">Tidak ada dokumen yang sebagian TTD.</p>
+  </div>
+
+  <div class="panel">
+    <h2>Lengkap TTD</h2>
+    <p class="sub">Semua departemen yang wajib menandatangani sudah TTD. Tetap bisa ditambah TTD lagi kalau perlu.</p>
     <table>
       <thead>
         <tr><th>Nama Dokumen</th><th>No. Dokumen</th><th>Departemen</th><th>Diupload oleh</th><th>Jumlah TTD</th><th></th></tr>
       </thead>
       <tbody id="signedDocList"></tbody>
     </table>
-    <p id="signedEmpty" class="empty" style="display:none;">Belum ada dokumen yang ditandatangani.</p>
+    <p id="signedEmpty" class="empty" style="display:none;">Belum ada dokumen yang lengkap TTD.</p>
   </div>
 
   <div class="panel">
@@ -180,23 +196,38 @@ function manageButtonsHtml(doc) {
   return archiveBtn + deleteBtn;
 }
 
+let allDocsCache = [];
+
 async function loadDocs() {
   const res = await fetch('/api/documents');
   const data = await res.json();
+  allDocsCache = data.documents;
+  renderDocs();
+}
+
+function renderDocs() {
+  const query = (document.getElementById('searchBox').value || '').trim().toLowerCase();
+  const matches = doc => !query || doc.doc_name.toLowerCase().includes(query) || doc.doc_number.toLowerCase().includes(query);
+
   const pendingBody = document.getElementById('pendingDocList');
+  const partialBody = document.getElementById('partialDocList');
   const signedBody = document.getElementById('signedDocList');
   const archivedBody = document.getElementById('archivedDocList');
   pendingBody.innerHTML = '';
+  partialBody.innerHTML = '';
   signedBody.innerHTML = '';
   archivedBody.innerHTML = '';
 
-  const active = data.documents.filter(d => !d.archived);
-  const archived = data.documents.filter(d => d.archived);
-  const pending = active.filter(d => !(d.signature_count > 0));
-  const signed = active.filter(d => d.signature_count > 0);
+  const filtered = allDocsCache.filter(matches);
+  const active = filtered.filter(d => !d.archived);
+  const archived = filtered.filter(d => d.archived);
+  const pending = active.filter(d => d.completion_status === 'pending' || !d.completion_status);
+  const partial = active.filter(d => d.completion_status === 'partial');
+  const complete = active.filter(d => d.completion_status === 'complete' || (d.completion_status === undefined && d.signature_count > 0));
 
   document.getElementById('pendingEmpty').style.display = pending.length === 0 ? 'block' : 'none';
-  document.getElementById('signedEmpty').style.display = signed.length === 0 ? 'block' : 'none';
+  document.getElementById('partialEmpty').style.display = partial.length === 0 ? 'block' : 'none';
+  document.getElementById('signedEmpty').style.display = complete.length === 0 ? 'block' : 'none';
   document.getElementById('archivedEmpty').style.display = archived.length === 0 ? 'block' : 'none';
 
   pending.forEach(doc => {
@@ -206,7 +237,21 @@ async function loadDocs() {
     pendingBody.appendChild(tr);
   });
 
-  signed.forEach(doc => {
+  partial.forEach(doc => {
+    const req = doc.required_departments || [];
+    const signed = doc.signed_departments || [];
+    const missing = req.filter(d => !signed.includes(d));
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${doc.doc_name}</td><td>${doc.doc_number}</td>
+      <td><span class="badge pending">${signed.length}/${req.length} departemen</span>
+        <div style="font-size:11px; color:var(--ink-faint); margin-top:3px;">Menunggu: ${missing.join(', ')}</div></td>
+      <td>${doc.uploaded_by_name}</td>
+      <td><a class="action" href="/sign.html?id=${doc.id}">+ Tambah TTD</a>
+      <a class="action" href="#" onclick="viewSigned('${doc.id}'); return false;" style="margin-left:10px;">Lihat</a>${manageButtonsHtml(doc)}</td>`;
+    partialBody.appendChild(tr);
+  });
+
+  complete.forEach(doc => {
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${doc.doc_name}</td><td>${doc.doc_number}</td><td>${doc.department}</td><td>${doc.uploaded_by_name}</td>
       <td><span class="badge signed">${doc.signature_count} TTD</span></td>
@@ -224,6 +269,8 @@ async function loadDocs() {
     archivedBody.appendChild(tr);
   });
 }
+
+document.getElementById('searchBox').addEventListener('input', renderDocs);
 
 async function archiveDoc(docId, archived) {
   const confirmMsg = archived

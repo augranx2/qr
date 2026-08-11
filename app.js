@@ -190,6 +190,17 @@ app.delete('/api/users/:id', requireLogin, requireAdmin, async (req, res) => {
   }
 });
 
+// Admin-only: edit an existing user's full name, jabatan, department, or role
+app.patch('/api/users/:id', requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const { full_name, jabatan, department, role } = req.body;
+    await db.updateUser(Number(req.params.id), { full_name, jabatan, department, role });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
 // ---------- DEPARTMENTS (controlled list used for upload dropdown + Drive folder mapping) ----------
 app.get('/api/departments', requireLogin, async (req, res) => {
   res.json({ departments: await db.listDepartments() });
@@ -310,11 +321,20 @@ app.get('/api/documents/:id', requireLogin, async (req, res) => {
   const doc = await db.getDocumentById(req.params.id);
   if (!doc) return res.status(404).json({ error: 'Dokumen tidak ditemukan' });
   if (!canAccessDocument(req.user, doc)) return res.status(403).json({ error: 'Departemen Anda tidak memiliki akses ke dokumen ini' });
-  const signature_count = await db.getSignatureCountForDocument(doc.id);
+  const allSigs = await db.getAllSignaturesForDocument(doc.id);
+  const requiredDepartments = (doc.allowed_departments && doc.allowed_departments.length > 0) ? doc.allowed_departments : [doc.department];
+  const signedDepartments = [...new Set(allSigs.map(s => s.signer_department).filter(Boolean))];
+  const isComplete = requiredDepartments.every(d => signedDepartments.includes(d));
   // Preview/edit always goes through our own file-serving route below, which fetches
   // fresh from Google Drive each time - never assumes anything is still on local disk.
   const current_file_url = `/api/documents/${doc.id}/file`;
-  res.json({ document: { ...doc, signature_count, current_file_url } });
+  res.json({
+    document: {
+      ...doc, signature_count: allSigs.length, current_file_url,
+      required_departments: requiredDepartments, signed_departments: signedDepartments,
+      completion_status: allSigs.length === 0 ? 'pending' : (isComplete ? 'complete' : 'partial')
+    }
+  });
 });
 
 // Serves the document's current file (latest signed version if any, else the original) -
@@ -406,6 +426,7 @@ app.post('/api/documents/:id/sign', requireLogin, async (req, res) => {
 
     await db.createSignature({
       id: signatureId, document_id: doc.id, signed_by: req.user.id,
+      signer_department: req.user.department,
       qr_x, qr_y, qr_size, page_number: page_number || 1
     });
 
