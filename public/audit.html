@@ -18,7 +18,7 @@
 </header>
 <main>
   <div class="panel">
-    <h2>Riwayat Aktivitas</h2>
+    <div class="panel-kop"><h2>Riwayat Aktivitas</h2><span class="kop-badge" id="logCount">0 aktivitas</span></div>
     <p class="sub">Login, logout, upload dokumen, dan tanda tangan — 500 aktivitas terakhir, terbaru di atas.</p>
     <table>
       <thead><tr><th>Waktu</th><th>Aksi</th><th>Oleh</th><th>Detail</th></tr></thead>
@@ -61,6 +61,7 @@ async function loadLog() {
   }
   const tbody = document.getElementById('logList');
   tbody.innerHTML = '';
+  document.getElementById('logCount').textContent = `${data.entries.length} aktivitas`;
   if (data.entries.length === 0) {
     document.getElementById('emptyMsg').style.display = 'block';
     return;

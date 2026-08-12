@@ -1,4 +1,5 @@
 node_modules/
+data/store.json
 data/*.db
 data/*.db-shm
 data/*.db-wal
@@ -6,4 +7,6 @@ uploads/*
 signed/*
 !uploads/.gitkeep
 !signed/.gitkeep
+!data/.gitkeep
 .env
+.vercel

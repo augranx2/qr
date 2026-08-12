@@ -129,16 +129,43 @@ main { max-width: 960px; margin: 32px auto; padding: 0 20px 60px; }
 .panel {
   background: var(--card);
   border-radius: var(--radius);
-  padding: 24px;
+  padding: 0 24px 24px;
   margin-bottom: 24px;
   border: 1px solid var(--border);
   box-shadow: var(--shadow-sm);
   transition: box-shadow 0.2s var(--ease);
+  overflow: hidden;
+}
+.panel-kop {
+  background: linear-gradient(135deg, #0F2620, #0B6E5C);
+  margin: 0 -24px 20px;
+  padding: 15px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 .panel h2 {
   font-size: 16px;
-  margin: 0 0 6px;
+  margin: 24px 0 6px;
   font-weight: 600;
+}
+.panel-kop h2 {
+  color: white;
+  font-size: 13.5px;
+  margin: 0;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.panel-kop .kop-badge {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: rgba(255, 255, 255, 0.12);
+  padding: 4px 12px;
+  border-radius: 999px;
 }
 .panel p.sub, .sub {
   font-size: 12.5px;

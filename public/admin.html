@@ -24,7 +24,7 @@
 <main>
 
   <div class="panel">
-    <h2>Tambah Personil Baru</h2>
+    <div class="panel-kop"><h2>Tambah Personil Baru</h2></div>
     <p class="sub">Personil yang ditambahkan bisa langsung login memakai username &amp; password ini.</p>
     <div class="msg" id="userMsg"></div>
     <form id="userForm">
@@ -48,7 +48,7 @@
   </div>
 
   <div class="panel">
-    <h2>Daftar Personil</h2>
+    <div class="panel-kop"><h2>Daftar Personil</h2><span class="kop-badge" id="userCount">0 personil</span></div>
     <table>
       <thead><tr><th>Username</th><th>Nama</th><th>Jabatan</th><th>Departemen</th><th>Peran</th><th>Aksi</th></tr></thead>
       <tbody id="userList"></tbody>
@@ -56,7 +56,7 @@
   </div>
 
   <div class="panel">
-    <h2>Departemen &amp; Folder Google Drive</h2>
+    <div class="panel-kop"><h2>Departemen &amp; Folder Google Drive</h2></div>
     <p class="sub">Daftar ini yang muncul sebagai pilihan departemen saat upload dokumen. Folder Google Drive dibuat otomatis saat dokumen pertama dari departemen tersebut ditandatangani — atau Anda bisa mengaitkannya ke folder yang sudah ada dengan menempel Folder ID di bawah.</p>
     <div class="msg" id="deptMsg"></div>
     <button class="secondary" onclick="resetDepartmentsDefault()" style="margin-bottom:12px;">Reset ke 11 Departemen Default (QA, QC, Production, dst)</button>
@@ -98,6 +98,7 @@ async function loadUsers() {
 function renderUserRows() {
   const tbody = document.getElementById('userList');
   tbody.innerHTML = '';
+  document.getElementById('userCount').textContent = `${cachedUsers.length} personil`;
   cachedUsers.forEach(u => {
     const tr = document.createElement('tr');
     tr.id = `user-row-${u.id}`;
