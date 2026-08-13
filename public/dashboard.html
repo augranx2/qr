@@ -77,7 +77,7 @@
     <div class="panel-kop"><h2>Belum TTD</h2><span class="kop-badge" id="pendingCount">0 dokumen</span></div>
     <table>
       <thead>
-        <tr><th>Nama Dokumen</th><th>No. Dokumen</th><th>Departemen</th><th>Diupload oleh</th><th></th></tr>
+        <tr><th>Nama Dokumen</th><th>No. Dokumen</th><th>Departemen</th><th>Diupload oleh</th><th>Tandatangani</th><th>Kelola</th></tr>
       </thead>
       <tbody id="pendingDocList"></tbody>
     </table>
@@ -89,7 +89,7 @@
     <p class="sub">Sudah ada tanda tangan, tapi belum semua departemen yang wajib TTD menandatangani.</p>
     <table>
       <thead>
-        <tr><th>Nama Dokumen</th><th>No. Dokumen</th><th>Progres TTD</th><th>Diupload oleh</th><th></th></tr>
+        <tr><th>Nama Dokumen</th><th>No. Dokumen</th><th>Progres TTD</th><th>Diupload oleh</th><th>Tambah TTD</th><th>Lihat</th><th>Kelola</th></tr>
       </thead>
       <tbody id="partialDocList"></tbody>
     </table>
@@ -101,7 +101,7 @@
     <p class="sub">Semua departemen yang wajib menandatangani sudah TTD. Tetap bisa ditambah TTD lagi kalau perlu.</p>
     <table>
       <thead>
-        <tr><th>Nama Dokumen</th><th>No. Dokumen</th><th>Departemen</th><th>Diupload oleh</th><th>Jumlah TTD</th><th></th></tr>
+        <tr><th>Nama Dokumen</th><th>No. Dokumen</th><th>Departemen</th><th>Diupload oleh</th><th>Jumlah TTD</th><th>Tambah TTD</th><th>Lihat</th><th>Kelola</th></tr>
       </thead>
       <tbody id="signedDocList"></tbody>
     </table>
@@ -113,7 +113,7 @@
     <p class="sub">Dokumen yang diarsipkan tidak hilang - QR yang sudah dicetak tetap valid kalau di-scan. Bisa dikembalikan kapan saja.</p>
     <table>
       <thead>
-        <tr><th>Nama Dokumen</th><th>No. Dokumen</th><th>Departemen</th><th>Jumlah TTD</th><th></th></tr>
+        <tr><th>Nama Dokumen</th><th>No. Dokumen</th><th>Departemen</th><th>Jumlah TTD</th><th>Kembalikan</th></tr>
       </thead>
       <tbody id="archivedDocList"></tbody>
     </table>
@@ -194,12 +194,12 @@ function canManage(doc) {
   return currentUser.department === doc.department;
 }
 
-function manageButtonsHtml(doc) {
-  if (!canManage(doc)) return '';
-  const archiveBtn = `<a class="action" href="#" onclick="archiveDoc('${doc.id}', true); return false;" style="margin-left:10px; color:var(--amber);">Arsipkan</a>`;
+function manageCellHtml(doc) {
+  if (!canManage(doc)) return '<span style="color:var(--ink-faint);">&mdash;</span>';
+  const archiveBtn = `<a class="action" href="#" onclick="archiveDoc('${doc.id}', true); return false;" style="color:var(--amber);">Arsipkan</a>`;
   const deleteBtn = doc.signature_count > 0
     ? '' // signed documents can't be permanently deleted - archive only, to keep printed QR codes valid
-    : `<a class="action" href="#" onclick="deleteDoc('${doc.id}'); return false;" style="margin-left:10px; color:var(--red);">Hapus</a>`;
+    : `<a class="action" href="#" onclick="deleteDoc('${doc.id}'); return false;" style="color:var(--red); margin-left:10px;">Hapus</a>`;
   return archiveBtn + deleteBtn;
 }
 
@@ -245,7 +245,8 @@ function renderDocs() {
   pending.forEach(doc => {
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${doc.doc_name}</td><td>${doc.doc_number}</td><td>${doc.department}</td><td>${doc.uploaded_by_name}</td>
-      <td><a class="action" href="/sign.html?id=${doc.id}">Tandatangani</a>${manageButtonsHtml(doc)}</td>`;
+      <td><a class="action" href="/sign.html?id=${doc.id}">Tandatangani</a></td>
+      <td>${manageCellHtml(doc)}</td>`;
     pendingBody.appendChild(tr);
   });
 
@@ -258,8 +259,9 @@ function renderDocs() {
       <td><span class="badge pending">${signed.length}/${req.length} departemen</span>
         <div style="font-size:11px; color:var(--ink-faint); margin-top:3px;">Menunggu: ${missing.join(', ')}</div></td>
       <td>${doc.uploaded_by_name}</td>
-      <td><a class="action" href="/sign.html?id=${doc.id}">+ Tambah TTD</a>
-      <a class="action" href="#" onclick="viewSigned('${doc.id}'); return false;" style="margin-left:10px;">Lihat</a>${manageButtonsHtml(doc)}</td>`;
+      <td><a class="action" href="/sign.html?id=${doc.id}">+ Tambah TTD</a></td>
+      <td><a class="action" href="#" onclick="viewSigned('${doc.id}'); return false;">Lihat</a></td>
+      <td>${manageCellHtml(doc)}</td>`;
     partialBody.appendChild(tr);
   });
 
@@ -267,14 +269,17 @@ function renderDocs() {
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${doc.doc_name}</td><td>${doc.doc_number}</td><td>${doc.department}</td><td>${doc.uploaded_by_name}</td>
       <td><span class="badge signed">${doc.signature_count} TTD</span></td>
-      <td><a class="action" href="/sign.html?id=${doc.id}">+ Tambah TTD</a>
-      <a class="action" href="#" onclick="viewSigned('${doc.id}'); return false;" style="margin-left:10px;">Lihat</a>${manageButtonsHtml(doc)}</td>`;
+      <td><a class="action" href="/sign.html?id=${doc.id}">+ Tambah TTD</a></td>
+      <td><a class="action" href="#" onclick="viewSigned('${doc.id}'); return false;">Lihat</a></td>
+      <td>${manageCellHtml(doc)}</td>`;
     signedBody.appendChild(tr);
   });
 
   archived.forEach(doc => {
     const tr = document.createElement('tr');
-    const restoreBtn = canManage(doc) ? `<a class="action" href="#" onclick="archiveDoc('${doc.id}', false); return false;">Kembalikan</a>` : '';
+    const restoreBtn = canManage(doc)
+      ? `<a class="action" href="#" onclick="archiveDoc('${doc.id}', false); return false;">Kembalikan</a>`
+      : '<span style="color:var(--ink-faint);">&mdash;</span>';
     tr.innerHTML = `<td>${doc.doc_name}</td><td>${doc.doc_number}</td><td>${doc.department}</td>
       <td><span class="badge">${doc.signature_count} TTD</span></td>
       <td>${restoreBtn}</td>`;

@@ -59,15 +59,20 @@
     <div class="panel-kop"><h2>Departemen &amp; Folder Google Drive</h2></div>
     <p class="sub">Daftar ini yang muncul sebagai pilihan departemen saat upload dokumen. Folder Google Drive dibuat otomatis saat dokumen pertama dari departemen tersebut ditandatangani — atau Anda bisa mengaitkannya ke folder yang sudah ada dengan menempel Folder ID di bawah.</p>
     <div class="msg" id="deptMsg"></div>
+
+    <div style="background:var(--paper); border:1px solid var(--border); border-radius:var(--radius-sm); padding:16px; margin-bottom:20px;">
+      <label style="font-size:13px; margin-bottom:8px;">+ Tambah Departemen Baru</label>
+      <div style="display:flex; gap:10px;">
+        <input type="text" id="new_dept_name" placeholder="cth. IT, Marketing, dst" style="flex:1;">
+        <button class="primary" onclick="addDepartment()" style="width:auto; margin-top:0; padding:10px 20px; white-space:nowrap;">Tambah</button>
+      </div>
+    </div>
+
     <button class="secondary" onclick="resetDepartmentsDefault()" style="margin-bottom:12px;">Reset ke 11 Departemen Default (QA, QC, Production, dst)</button>
     <table>
       <thead><tr><th>Departemen</th><th>Folder Drive</th><th>Aksi</th></tr></thead>
       <tbody id="deptList"></tbody>
     </table>
-    <div class="row" style="margin-top:16px;">
-      <div><label>Tambah Departemen Baru</label><input type="text" id="new_dept_name" placeholder="cth. Produksi"></div>
-      <div style="flex:0; align-self:flex-end;"><button class="primary" onclick="addDepartment()">Tambah</button></div>
-    </div>
   </div>
 
 </main>
