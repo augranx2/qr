@@ -74,7 +74,15 @@
   </div>
 
   <div class="panel">
-    <div class="panel-kop"><h2>Belum TTD</h2><span class="kop-badge" id="pendingCount">0 dokumen</span></div>
+    <div class="panel-kop">
+      <h2>Belum TTD</h2>
+      <div style="display:flex; align-items:center; gap:10px;">
+        <span class="kop-badge" id="pendingCount">0 dokumen</span>
+        <button class="kop-toggle" id="pendingToggle" onclick="toggleSection('pending')" title="Lipat/buka daftar">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </button>
+      </div>
+    </div>
     <table>
       <thead>
         <tr><th>Nama Dokumen</th><th>No. Dokumen</th><th>Departemen</th><th>Diupload oleh</th><th>Tandatangani</th><th>Kelola</th></tr>
@@ -85,7 +93,15 @@
   </div>
 
   <div class="panel">
-    <div class="panel-kop"><h2>Sebagian TTD</h2><span class="kop-badge" id="partialCount">0 dokumen</span></div>
+    <div class="panel-kop">
+      <h2>Sebagian TTD</h2>
+      <div style="display:flex; align-items:center; gap:10px;">
+        <span class="kop-badge" id="partialCount">0 dokumen</span>
+        <button class="kop-toggle" id="partialToggle" onclick="toggleSection('partial')" title="Lipat/buka daftar">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </button>
+      </div>
+    </div>
     <p class="sub">Sudah ada tanda tangan, tapi belum semua departemen yang wajib TTD menandatangani.</p>
     <table>
       <thead>
@@ -97,7 +113,15 @@
   </div>
 
   <div class="panel">
-    <div class="panel-kop"><h2>Lengkap TTD</h2><span class="kop-badge" id="signedCount">0 dokumen</span></div>
+    <div class="panel-kop">
+      <h2>Lengkap TTD</h2>
+      <div style="display:flex; align-items:center; gap:10px;">
+        <span class="kop-badge" id="signedCount">0 dokumen</span>
+        <button class="kop-toggle" id="signedToggle" onclick="toggleSection('signed')" title="Lipat/buka daftar">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </button>
+      </div>
+    </div>
     <p class="sub">Semua departemen yang wajib menandatangani sudah TTD. Tetap bisa ditambah TTD lagi kalau perlu.</p>
     <table>
       <thead>
@@ -109,7 +133,15 @@
   </div>
 
   <div class="panel">
-    <div class="panel-kop"><h2>Diarsipkan</h2><span class="kop-badge" id="archivedCount">0 dokumen</span></div>
+    <div class="panel-kop">
+      <h2>Diarsipkan</h2>
+      <div style="display:flex; align-items:center; gap:10px;">
+        <span class="kop-badge" id="archivedCount">0 dokumen</span>
+        <button class="kop-toggle" id="archivedToggle" onclick="toggleSection('archived')" title="Lipat/buka daftar">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </button>
+      </div>
+    </div>
     <p class="sub">Dokumen yang diarsipkan tidak hilang - QR yang sudah dicetak tetap valid kalau di-scan. Bisa dikembalikan kapan saja.</p>
     <table>
       <thead>
@@ -204,6 +236,40 @@ function manageCellHtml(doc) {
 }
 
 let allDocsCache = [];
+// Default: Belum TTD & Sebagian TTD start open; Lengkap TTD & Diarsipkan start collapsed
+// (only showing the newest couple of documents) since those lists tend to grow long.
+let sectionExpanded = { pending: true, partial: true, signed: false, archived: false };
+const COLLAPSED_PREVIEW_COUNT = 2;
+
+function toggleSection(key) {
+  sectionExpanded[key] = !sectionExpanded[key];
+  renderDocs();
+}
+
+function updateToggleIcon(key) {
+  const btn = document.getElementById(`${key}Toggle`);
+  if (!btn) return;
+  btn.classList.toggle('collapsed', !sectionExpanded[key]);
+}
+
+// Renders a section's rows into its <tbody>. If the section is collapsed (and no search
+// is active), only the first COLLAPSED_PREVIEW_COUNT docs show, plus a "Tampilkan semua"
+// row. Searching always shows full matching results regardless of collapse state.
+function renderSectionRows(tbody, docs, key, isSearching, rowBuilder, colspan) {
+  const showAll = isSearching || sectionExpanded[key];
+  const toShow = showAll ? docs : docs.slice(0, COLLAPSED_PREVIEW_COUNT);
+  toShow.forEach(doc => tbody.appendChild(rowBuilder(doc)));
+  if (!showAll && docs.length > COLLAPSED_PREVIEW_COUNT) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = colspan;
+    td.style.cssText = 'text-align:center; padding:12px;';
+    td.innerHTML = `<a class="action" href="#" onclick="toggleSection('${key}'); return false;">Tampilkan semua ${docs.length} dokumen &darr;</a>`;
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+  }
+  updateToggleIcon(key);
+}
 
 async function loadDocs() {
   const res = await fetch('/api/documents');
@@ -214,6 +280,7 @@ async function loadDocs() {
 
 function renderDocs() {
   const query = (document.getElementById('searchBox').value || '').trim().toLowerCase();
+  const isSearching = query.length > 0;
   const matches = doc => !query || doc.doc_name.toLowerCase().includes(query) || doc.doc_number.toLowerCase().includes(query);
 
   const pendingBody = document.getElementById('pendingDocList');
@@ -242,15 +309,15 @@ function renderDocs() {
   document.getElementById('signedCount').textContent = `${complete.length} dokumen`;
   document.getElementById('archivedCount').textContent = `${archived.length} dokumen`;
 
-  pending.forEach(doc => {
+  renderSectionRows(pendingBody, pending, 'pending', isSearching, doc => {
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${doc.doc_name}</td><td>${doc.doc_number}</td><td>${doc.department}</td><td>${doc.uploaded_by_name}</td>
       <td><a class="action" href="/sign.html?id=${doc.id}">Tandatangani</a></td>
       <td>${manageCellHtml(doc)}</td>`;
-    pendingBody.appendChild(tr);
-  });
+    return tr;
+  }, 6);
 
-  partial.forEach(doc => {
+  renderSectionRows(partialBody, partial, 'partial', isSearching, doc => {
     const req = doc.required_departments || [];
     const signed = doc.signed_departments || [];
     const missing = req.filter(d => !signed.includes(d));
@@ -262,20 +329,20 @@ function renderDocs() {
       <td><a class="action" href="/sign.html?id=${doc.id}">+ Tambah TTD</a></td>
       <td><a class="action" href="#" onclick="viewSigned('${doc.id}'); return false;">Lihat</a></td>
       <td>${manageCellHtml(doc)}</td>`;
-    partialBody.appendChild(tr);
-  });
+    return tr;
+  }, 7);
 
-  complete.forEach(doc => {
+  renderSectionRows(signedBody, complete, 'signed', isSearching, doc => {
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${doc.doc_name}</td><td>${doc.doc_number}</td><td>${doc.department}</td><td>${doc.uploaded_by_name}</td>
       <td><span class="badge signed">${doc.signature_count} TTD</span></td>
       <td><a class="action" href="/sign.html?id=${doc.id}">+ Tambah TTD</a></td>
       <td><a class="action" href="#" onclick="viewSigned('${doc.id}'); return false;">Lihat</a></td>
       <td>${manageCellHtml(doc)}</td>`;
-    signedBody.appendChild(tr);
-  });
+    return tr;
+  }, 8);
 
-  archived.forEach(doc => {
+  renderSectionRows(archivedBody, archived, 'archived', isSearching, doc => {
     const tr = document.createElement('tr');
     const restoreBtn = canManage(doc)
       ? `<a class="action" href="#" onclick="archiveDoc('${doc.id}', false); return false;">Kembalikan</a>`
@@ -283,8 +350,8 @@ function renderDocs() {
     tr.innerHTML = `<td>${doc.doc_name}</td><td>${doc.doc_number}</td><td>${doc.department}</td>
       <td><span class="badge">${doc.signature_count} TTD</span></td>
       <td>${restoreBtn}</td>`;
-    archivedBody.appendChild(tr);
-  });
+    return tr;
+  }, 5);
 }
 
 document.getElementById('searchBox').addEventListener('input', renderDocs);
