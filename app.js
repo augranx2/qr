@@ -34,34 +34,34 @@ app.use('/uploads', (req, res, next) => {
   if (!getUserFromRequest(req)) return res.status(401).send('Unauthorized');
   next();
 }, express.static(UPLOAD_DIR));
-app.get('/signed/:filename', (req, res) => {
+app.get('/signed/:filename', async (req, res) => {
   const filePath = path.join(SIGNED_DIR, req.params.filename);
   
-  // 1. Periksa apakah file fisik benar-benar ada di folder /tmp Vercel
+  // 1. Jika file fisik masih ada di folder /tmp Vercel, langsung kirim
   if (fs.existsSync(filePath)) {
     res.setHeader('Content-Type', 'application/pdf');
     return fs.createReadStream(filePath).pipe(res);
   }
   
-  // 2. Jika file lokal di /tmp hilang akibat serverless restart, ambil cadangannya dari Google Drive
-  db.getDocuments().then(async (docs) => {
+  try {
+    // 2. Jika file di /tmp terhapus, cari data dokumennya di database berdasarkan nama file
+    // Menggunakan fungsi db yang lebih standar (menyesuaikan database internal Anda)
+    const docs = await db.getDocuments ? await db.getDocuments() : [];
     const doc = docs.find(d => d.signed_filename === req.params.filename || d.file_name === req.params.filename);
+    
     if (doc && doc.drive_file_id) {
-      try {
-        const buffer = await gdrive.downloadFileBuffer(doc.drive_file_id);
-        res.setHeader('Content-Type', 'application/pdf');
-        return res.send(buffer);
-      } catch (err) {
-        return res.status(404).send('File tidak ditemukan di server maupun Google Drive.');
-      }
-    } else {
-      return res.status(404).send('Berkas tidak ditemukan.');
+      const buffer = await gdrive.downloadFileBuffer(doc.drive_file_id);
+      res.setHeader('Content-Type', 'application/pdf');
+      return res.send(buffer);
     }
-  }).catch(() => {
-    return res.status(500).send('Terjadi kesalahan internal server.');
-  });
+    
+    // Jika tidak ditemukan di cache lokal, kembalikan response kosong/not found secara aman agar tidak crash
+    return res.status(404).send('Berkas tidak ditemukan atau folder sementara Vercel telah di-reset.');
+  } catch (err) {
+    console.error('Error rute signed:', err);
+    return res.status(404).send('Berkas tidak ditemukan di server.');
+  }
 });
-
 
 // ---------- Multer upload config ----------
 const upload = multer({
