@@ -2,7 +2,6 @@ const { google } = require('googleapis');
 const fs = require('fs');
 const db = require('./db');
 
-// Mengubah kebutuhan Env variable menjadi format Service Account
 const REQUIRED_ENV = ['GOOGLE_CREDS_JSON', 'GDRIVE_ROOT_FOLDER_ID'];
 
 function isConfigured() {
@@ -18,9 +17,7 @@ function getClient() {
   }
 
   try {
-    // Membaca teks string JSON dari Env Vercel dan mengubahnya ke objek javascript
     const credentials = JSON.parse(process.env.GOOGLE_CREDS_JSON);
-    
     authClient = new google.auth.GoogleAuth({
       credentials: {
         client_email: credentials.client_email,
@@ -30,7 +27,7 @@ function getClient() {
     });
     return authClient;
   } catch (error) {
-    throw new Error(`Gagal parsing GOOGLE_CREDS_JSON. Pastikan format teks JSON di Env Vercel sudah benar. Error: ${error.message}`);
+    throw new Error(`Gagal parsing GOOGLE_CREDS_JSON. Error: ${error.message}`);
   }
 }
 
@@ -50,7 +47,7 @@ async function getOrCreateDepartmentFolder(department) {
   const res = await drive.files.list({ q, fields: 'files(id, name)', spaces: 'drive' });
   let folderId;
   if (res.data.files && res.data.files.length > 0) {
-    folderId = res.data.files[0].id; // Menggunakan indeks [0] yang benar sesuai kode asli Anda
+    folderId = res.data.files[0].id; // Diperbaiki menggunakan indeks [0]
   } else {
     const created = await drive.files.create({
       requestBody: { name: department.trim(), mimeType: 'application/vnd.google-apps.folder', parents: [rootId] },
@@ -75,7 +72,7 @@ async function getOrCreateCategoryFolder(department, categoryName) {
   const res = await drive.files.list({ q, fields: 'files(id, name)', spaces: 'drive' });
   let folderId;
   if (res.data.files && res.data.files.length > 0) {
-    folderId = res.data.files[0].id; // Menggunakan indeks [0] yang benar sesuai kode asli Anda
+    folderId = res.data.files[0].id; // Diperbaiki menggunakan indeks [0]
   } else {
     const created = await drive.files.create({
       requestBody: { name: categoryName, mimeType: 'application/vnd.google-apps.folder', parents: [deptFolderId] },
