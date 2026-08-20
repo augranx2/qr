@@ -34,7 +34,34 @@ app.use('/uploads', (req, res, next) => {
   if (!getUserFromRequest(req)) return res.status(401).send('Unauthorized');
   next();
 }, express.static(UPLOAD_DIR));
-app.use('/signed', express.static(SIGNED_DIR)); // signed docs are viewable via the public verification page
+app.get('/signed/:filename', (req, res) => {
+  const filePath = path.join(SIGNED_DIR, req.params.filename);
+  
+  // 1. Periksa apakah file fisik benar-benar ada di folder /tmp Vercel
+  if (fs.existsSync(filePath)) {
+    res.setHeader('Content-Type', 'application/pdf');
+    return fs.createReadStream(filePath).pipe(res);
+  }
+  
+  // 2. Jika file lokal di /tmp hilang akibat serverless restart, ambil cadangannya dari Google Drive
+  db.getDocuments().then(async (docs) => {
+    const doc = docs.find(d => d.signed_filename === req.params.filename || d.file_name === req.params.filename);
+    if (doc && doc.drive_file_id) {
+      try {
+        const buffer = await gdrive.downloadFileBuffer(doc.drive_file_id);
+        res.setHeader('Content-Type', 'application/pdf');
+        return res.send(buffer);
+      } catch (err) {
+        return res.status(404).send('File tidak ditemukan di server maupun Google Drive.');
+      }
+    } else {
+      return res.status(404).send('Berkas tidak ditemukan.');
+    }
+  }).catch(() => {
+    return res.status(500).send('Terjadi kesalahan internal server.');
+  });
+});
+
 
 // ---------- Multer upload config ----------
 const upload = multer({
