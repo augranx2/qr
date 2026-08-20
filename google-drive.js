@@ -2,22 +2,36 @@ const { google } = require('googleapis');
 const fs = require('fs');
 const db = require('./db');
 
-const REQUIRED_ENV = ['GDRIVE_CLIENT_ID', 'GDRIVE_CLIENT_SECRET', 'GDRIVE_REFRESH_TOKEN', 'GDRIVE_ROOT_FOLDER_ID'];
+// Mengubah kebutuhan Env variable menjadi format Service Account
+const REQUIRED_ENV = ['GOOGLE_CREDS_JSON', 'GDRIVE_ROOT_FOLDER_ID'];
 
 function isConfigured() {
   return REQUIRED_ENV.every(k => !!process.env[k]);
 }
 
-let oauth2Client = null;
+let authClient = null;
 function getClient() {
-  if (oauth2Client) return oauth2Client;
+  if (authClient) return authClient;
   const missing = REQUIRED_ENV.filter(k => !process.env[k]);
   if (missing.length) {
     throw new Error(`Google Drive belum dikonfigurasi. Env var berikut belum diisi: ${missing.join(', ')}`);
   }
-  oauth2Client = new google.auth.OAuth2(process.env.GDRIVE_CLIENT_ID, process.env.GDRIVE_CLIENT_SECRET);
-  oauth2Client.setCredentials({ refresh_token: process.env.GDRIVE_REFRESH_TOKEN });
-  return oauth2Client;
+
+  try {
+    // Membaca teks string JSON dari Env Vercel dan mengubahnya ke objek javascript
+    const credentials = JSON.parse(process.env.GOOGLE_CREDS_JSON);
+    
+    authClient = new google.auth.GoogleAuth({
+      credentials: {
+        client_email: credentials.client_email,
+        private_key: credentials.private_key,
+      },
+      scopes: ['https://googleapis.com'],
+    });
+    return authClient;
+  } catch (error) {
+    throw new Error(`Gagal parsing GOOGLE_CREDS_JSON. Pastikan format teks JSON di Env Vercel sudah benar. Error: ${error.message}`);
+  }
 }
 
 function getDrive() {
@@ -48,12 +62,6 @@ async function getOrCreateDepartmentFolder(department) {
   return folderId;
 }
 
-/**
- * Gets (or creates) a subfolder inside the department folder - e.g. "File Asli" or
- * "File TTD QR Code" - so original and signed documents end up neatly separated
- * even though they share the same top-level department folder. Cached the same way
- * as the department folder itself (under a compound key) to avoid repeat API calls.
- */
 async function getOrCreateCategoryFolder(department, categoryName) {
   const cacheKey = `${department}::${categoryName}`;
   const cached = await db.getDriveFolderId(cacheKey);
@@ -79,11 +87,6 @@ async function getOrCreateCategoryFolder(department, categoryName) {
   return folderId;
 }
 
-/**
- * Uploads a document into the department's folder on Google Drive - into a "File Asli"
- * or "File TTD QR Code" subfolder when `category` is given, otherwise directly into the
- * department folder. Returns { fileId, webViewLink } on success.
- */
 async function uploadSignedDocument({ filePath, fileName, mimeType, department, category }) {
   const drive = getDrive();
   const folderId = category
@@ -97,11 +100,6 @@ async function uploadSignedDocument({ filePath, fileName, mimeType, department, 
   return { fileId: res.data.id, webViewLink: res.data.webViewLink };
 }
 
-/**
- * Overwrites the content of an existing Drive file (used when a document gets an
- * additional QR signature - keeps one file per document instead of creating duplicates).
- * Returns { fileId, webViewLink } on success.
- */
 async function updateSignedDocument({ fileId, filePath, mimeType }) {
   const drive = getDrive();
   const res = await drive.files.update({
@@ -112,11 +110,6 @@ async function updateSignedDocument({ fileId, filePath, mimeType }) {
   return { fileId: res.data.id, webViewLink: res.data.webViewLink };
 }
 
-/**
- * Downloads a file's raw bytes from Drive. Used so the app never has to rely on
- * anything being left over on local disk from a previous request - the file always
- * comes fresh from Drive, which is the durable source of truth.
- */
 async function downloadFileBuffer(fileId) {
   const drive = getDrive();
   const res = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'arraybuffer' });
