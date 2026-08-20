@@ -50,7 +50,7 @@ async function getOrCreateDepartmentFolder(department) {
   const res = await drive.files.list({ q, fields: 'files(id, name)', spaces: 'drive' });
   let folderId;
   if (res.data.files && res.data.files.length > 0) {
-    folderId = res.data.files[0].id;
+    folderId = res.data.files[0].id; // Menggunakan indeks [0] yang benar sesuai kode asli Anda
   } else {
     const created = await drive.files.create({
       requestBody: { name: department.trim(), mimeType: 'application/vnd.google-apps.folder', parents: [rootId] },
@@ -75,7 +75,7 @@ async function getOrCreateCategoryFolder(department, categoryName) {
   const res = await drive.files.list({ q, fields: 'files(id, name)', spaces: 'drive' });
   let folderId;
   if (res.data.files && res.data.files.length > 0) {
-    folderId = res.data.files[0].id;
+    folderId = res.data.files[0].id; // Menggunakan indeks [0] yang benar sesuai kode asli Anda
   } else {
     const created = await drive.files.create({
       requestBody: { name: categoryName, mimeType: 'application/vnd.google-apps.folder', parents: [deptFolderId] },
@@ -92,6 +92,11 @@ async function uploadSignedDocument({ filePath, fileName, mimeType, department, 
   const folderId = category
     ? await getOrCreateCategoryFolder(department, category)
     : await getOrCreateDepartmentFolder(department);
+  
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`File tidak ditemukan di path lokal server Vercel: ${filePath}`);
+  }
+
   const res = await drive.files.create({
     requestBody: { name: fileName, parents: [folderId] },
     media: { mimeType, body: fs.createReadStream(filePath) },
@@ -102,6 +107,11 @@ async function uploadSignedDocument({ filePath, fileName, mimeType, department, 
 
 async function updateSignedDocument({ fileId, filePath, mimeType }) {
   const drive = getDrive();
+  
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`File tidak ditemukan di path lokal server Vercel: ${filePath}`);
+  }
+
   const res = await drive.files.update({
     fileId,
     media: { mimeType, body: fs.createReadStream(filePath) },
