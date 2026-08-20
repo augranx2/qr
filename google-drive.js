@@ -47,7 +47,7 @@ async function getOrCreateDepartmentFolder(department) {
   const res = await drive.files.list({ q, fields: 'files(id, name)', spaces: 'drive' });
   let folderId;
   if (res.data.files && res.data.files.length > 0) {
-    folderId = res.data.files[0].id; // <--- Indeks [0] sudah diperbaiki di sini
+    folderId = res.data.files[0].id; // <--- SUDAH DIPERBAIKI MENGGUNAKAN INDEKS [0]
   } else {
     const created = await drive.files.create({
       requestBody: { name: department.trim(), mimeType: 'application/vnd.google-apps.folder', parents: [rootId] },
@@ -72,7 +72,7 @@ async function getOrCreateCategoryFolder(department, categoryName) {
   const res = await drive.files.list({ q, fields: 'files(id, name)', spaces: 'drive' });
   let folderId;
   if (res.data.files && res.data.files.length > 0) {
-    folderId = res.data.files[0].id; // <--- Indeks [0] sudah diperbaiki di sini
+    folderId = res.data.files[0].id; // <--- SUDAH DIPERBAIKI MENGGUNAKAN INDEKS [0]
   } else {
     const created = await drive.files.create({
       requestBody: { name: categoryName, mimeType: 'application/vnd.google-apps.folder', parents: [deptFolderId] },
