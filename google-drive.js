@@ -94,9 +94,16 @@ async function uploadSignedDocument({ filePath, fileName, mimeType, department, 
     throw new Error(`File tidak ditemukan di path lokal server Vercel: ${filePath}`);
   }
 
+  // SOLUSI: Mengubah file fisik menjadi buffer memori utuh agar tidak terputus di Vercel
+  const fileBuffer = fs.readFileSync(filePath);
+  const { Readable } = require('stream');
+  const bufferStream = new Readable();
+  bufferStream.push(fileBuffer);
+  bufferStream.push(null);
+
   const res = await drive.files.create({
     requestBody: { name: fileName, parents: [folderId] },
-    media: { mimeType, body: fs.createReadStream(filePath) },
+    media: { mimeType, body: bufferStream }, // Menggunakan stream memori yang sangat stabil
     fields: 'id, webViewLink'
   });
   return { fileId: res.data.id, webViewLink: res.data.webViewLink };
@@ -109,9 +116,16 @@ async function updateSignedDocument({ fileId, filePath, mimeType }) {
     throw new Error(`File tidak ditemukan di path lokal server Vercel: ${filePath}`);
   }
 
+  // SOLUSI: Mengubah file fisik menjadi buffer memori utuh agar tidak terputus di Vercel
+  const fileBuffer = fs.readFileSync(filePath);
+  const { Readable } = require('stream');
+  const bufferStream = new Readable();
+  bufferStream.push(fileBuffer);
+  bufferStream.push(null);
+
   const res = await drive.files.update({
     fileId,
-    media: { mimeType, body: fs.createReadStream(filePath) },
+    media: { mimeType, body: bufferStream }, // Menggunakan stream memori yang sangat stabil
     fields: 'id, webViewLink'
   });
   return { fileId: res.data.id, webViewLink: res.data.webViewLink };
