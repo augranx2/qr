@@ -37,31 +37,30 @@ app.use('/uploads', (req, res, next) => {
 app.get('/signed/:filename', async (req, res) => {
   const filePath = path.join(SIGNED_DIR, req.params.filename);
   
-  // 1. Jika file fisik masih ada di folder /tmp Vercel, langsung kirim
+  // 1. Jika berkas fisik masih ada di folder /tmp Vercel, langsung kirim ke browser
   if (fs.existsSync(filePath)) {
     res.setHeader('Content-Type', 'application/pdf');
     return fs.createReadStream(filePath).pipe(res);
   }
   
   try {
-    // 2. Jika file di /tmp terhapus, cari data dokumennya di database berdasarkan nama file
-    // Menggunakan fungsi db yang lebih standar (menyesuaikan database internal Anda)
+    // 2. Jika berkas di /tmp sudah hilang/reset, cari datanya ke database internal aplikasi
     const docs = await db.getDocuments ? await db.getDocuments() : [];
     const doc = docs.find(d => d.signed_filename === req.params.filename || d.file_name === req.params.filename);
     
+    // 3. Ambil cadangan dokumen langsung dari Google Drive secara real-time
     if (doc && doc.drive_file_id) {
       const buffer = await gdrive.downloadFileBuffer(doc.drive_file_id);
       res.setHeader('Content-Type', 'application/pdf');
       return res.send(buffer);
     }
-    
-    // Jika tidak ditemukan di cache lokal, kembalikan response kosong/not found secara aman agar tidak crash
-    return res.status(404).send('Berkas tidak ditemukan atau folder sementara Vercel telah di-reset.');
+    return res.status(404).send('Berkas tidak ditemukan di server maupun Google Drive.');
   } catch (err) {
     console.error('Error rute signed:', err);
-    return res.status(404).send('Berkas tidak ditemukan di server.');
+    return res.status(404).send('Gagal memuat dokumen cadangan.');
   }
 });
+
 
 // ---------- Multer upload config ----------
 const upload = multer({
