@@ -94,20 +94,27 @@ async function uploadSignedDocument({ filePath, fileName, mimeType, department, 
     throw new Error(`File tidak ditemukan di path lokal server Vercel: ${filePath}`);
   }
 
-  // SOLUSI: Mengubah file fisik menjadi buffer memori utuh agar tidak terputus di Vercel
   const fileBuffer = fs.readFileSync(filePath);
   const { Readable } = require('stream');
   const bufferStream = new Readable();
   bufferStream.push(fileBuffer);
   bufferStream.push(null);
 
+  // MENGGUNAKAN 'resource' AGAR REQ BODY TIDAK ZONK DI GOOGLE SDK
   const res = await drive.files.create({
-    requestBody: { name: fileName, parents: [folderId] },
-    media: { mimeType, body: bufferStream }, // Menggunakan stream memori yang sangat stabil
+    resource: { 
+      name: fileName, 
+      parents: [folderId] 
+    },
+    media: { 
+      mimeType: mimeType, 
+      body: bufferStream 
+    },
     fields: 'id, webViewLink'
   });
   return { fileId: res.data.id, webViewLink: res.data.webViewLink };
 }
+
 
 async function updateSignedDocument({ fileId, filePath, mimeType }) {
   const drive = getDrive();
@@ -116,20 +123,24 @@ async function updateSignedDocument({ fileId, filePath, mimeType }) {
     throw new Error(`File tidak ditemukan di path lokal server Vercel: ${filePath}`);
   }
 
-  // SOLUSI: Mengubah file fisik menjadi buffer memori utuh agar tidak terputus di Vercel
   const fileBuffer = fs.readFileSync(filePath);
   const { Readable } = require('stream');
   const bufferStream = new Readable();
   bufferStream.push(fileBuffer);
   bufferStream.push(null);
 
+  // MENGGUNAKAN 'resource' UNTUK UPDATE JALUR MEMORI
   const res = await drive.files.update({
-    fileId,
-    media: { mimeType, body: bufferStream }, // Menggunakan stream memori yang sangat stabil
+    fileId: fileId,
+    media: { 
+      mimeType: mimeType, 
+      body: bufferStream 
+    },
     fields: 'id, webViewLink'
   });
   return { fileId: res.data.id, webViewLink: res.data.webViewLink };
 }
+
 
 async function downloadFileBuffer(fileId) {
   const drive = getDrive();
