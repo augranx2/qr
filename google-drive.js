@@ -2,10 +2,10 @@ const { google } = require('googleapis');
 const fs = require('fs');
 const db = require('./db');
 
-const REQUIRED_ENV = ['GOOGLE_CREDS_JSON', 'GDRIVE_ROOT_FOLDER_ID'];
+const REQUIRED_ENV = ['GDRIVE_CLIENT_ID', 'GDRIVE_CLIENT_SECRET', 'GDRIVE_REFRESH_TOKEN', 'GDRIVE_ROOT_FOLDER_ID'];
 
 function isConfigured() {
-  return REQUIRED_ENV.every(k => !!process.env[k]);
+  return REQUIRED_ENV.every(k => !process.env[k]);
 }
 
 let authClient = null;
@@ -16,19 +16,17 @@ function getClient() {
     throw new Error(`Google Drive belum dikonfigurasi. Env var berikut belum diisi: ${missing.join(', ')}`);
   }
 
-  try {
-    const credentials = JSON.parse(process.env.GOOGLE_CREDS_JSON);
-    authClient = new google.auth.GoogleAuth({
-      credentials: {
-        client_email: credentials.client_email,
-        private_key: credentials.private_key.replace(/\\n/g, '\n'),
-      },
-      scopes: ['https://www.googleapis.com/auth/drive'],
-    });
-    return authClient;
-  } catch (error) {
-    throw new Error(`Gagal parsing GOOGLE_CREDS_JSON. Error: ${error.message}`);
-  }
+  const oauth2Client = new google.auth.OAuth2(
+    process.env.GDRIVE_CLIENT_ID,
+    process.env.GDRIVE_CLIENT_SECRET
+  );
+
+  oauth2Client.setCredentials({
+    refresh_token: process.env.GDRIVE_REFRESH_TOKEN
+  });
+
+  authClient = oauth2Client;
+  return authClient;
 }
 
 function getDrive() {
@@ -47,7 +45,7 @@ async function getOrCreateDepartmentFolder(department) {
   const res = await drive.files.list({ q, fields: 'files(id, name)', spaces: 'drive' });
   let folderId;
   if (res.data.files && res.data.files.length > 0) {
-    folderId = res.data.files[0].id; // <--- SUDAH DIPERBAIKI MENGGUNAKAN INDEKS [0]
+    folderId = res.data.files[0].id;
   } else {
     const created = await drive.files.create({
       requestBody: { name: department.trim(), mimeType: 'application/vnd.google-apps.folder', parents: [rootId] },
@@ -72,7 +70,7 @@ async function getOrCreateCategoryFolder(department, categoryName) {
   const res = await drive.files.list({ q, fields: 'files(id, name)', spaces: 'drive' });
   let folderId;
   if (res.data.files && res.data.files.length > 0) {
-    folderId = res.data.files[0].id; // <--- SUDAH DIPERBAIKI MENGGUNAKAN INDEKS [0]
+    folderId = res.data.files[0].id;
   } else {
     const created = await drive.files.create({
       requestBody: { name: categoryName, mimeType: 'application/vnd.google-apps.folder', parents: [deptFolderId] },
@@ -94,27 +92,19 @@ async function uploadSignedDocument({ filePath, fileName, mimeType, department, 
     throw new Error(`File tidak ditemukan di path lokal server Vercel: ${filePath}`);
   }
 
-  const fileBuffer = fs.readFileSync(filePath);
-  const { Readable } = require('stream');
-  const bufferStream = new Readable();
-  bufferStream.push(fileBuffer);
-  bufferStream.push(null);
-
-  // MENGGUNAKAN 'resource' AGAR REQ BODY TIDAK ZONK DI GOOGLE SDK
   const res = await drive.files.create({
-    resource: { 
+    requestBody: { 
       name: fileName, 
       parents: [folderId] 
     },
     media: { 
       mimeType: mimeType, 
-      body: bufferStream 
+      body: fs.createReadStream(filePath) 
     },
     fields: 'id, webViewLink'
   });
   return { fileId: res.data.id, webViewLink: res.data.webViewLink };
 }
-
 
 async function updateSignedDocument({ fileId, filePath, mimeType }) {
   const drive = getDrive();
@@ -123,24 +113,16 @@ async function updateSignedDocument({ fileId, filePath, mimeType }) {
     throw new Error(`File tidak ditemukan di path lokal server Vercel: ${filePath}`);
   }
 
-  const fileBuffer = fs.readFileSync(filePath);
-  const { Readable } = require('stream');
-  const bufferStream = new Readable();
-  bufferStream.push(fileBuffer);
-  bufferStream.push(null);
-
-  // MENGGUNAKAN 'resource' UNTUK UPDATE JALUR MEMORI
   const res = await drive.files.update({
     fileId: fileId,
     media: { 
       mimeType: mimeType, 
-      body: bufferStream 
+      body: fs.createReadStream(filePath) 
     },
     fields: 'id, webViewLink'
   });
   return { fileId: res.data.id, webViewLink: res.data.webViewLink };
 }
-
 
 async function downloadFileBuffer(fileId) {
   const drive = getDrive();
