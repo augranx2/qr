@@ -9,6 +9,7 @@ Web app untuk upload dokumen (PDF/JPG/PNG), lalu ditandatangani secara elektroni
 - **Kontrol akses per departemen**: saat upload, pilih departemen mana saja yang boleh melihat/menandatangani dokumen tersebut — departemen yang tidak dipilih otomatis tidak bisa akses (admin selalu bisa akses semua)
 - Editor drag-and-drop untuk menempatkan posisi & ukuran QR pada dokumen (support multi-halaman PDF), bisa dipakai berulang kali dalam satu sesi tanpa perlu kembali ke dashboard
 - **Bisa tempel QR lebih dari satu kali di dokumen yang sama** (mis. alur review berjenjang: dibuat QA, diperiksa Supervisor, disetujui Manager) — tiap QR baru menumpuk di atas versi sebelumnya tanpa menghapus QR yang sudah ada
+- **Hapus dokumen permanen** (mis. kalau salah TTE): menghapus file dari server maupun Google Drive (asli & versi ber-QR) sekaligus riwayat tanda tangannya — QR yang sudah dicetak tidak akan bisa diverifikasi lagi setelahnya. Hanya bisa dilakukan oleh **yang mengupload dokumen tersebut atau admin** (beda dengan Arsipkan, yang bisa dilakukan siapa saja di departemen yang sama dan tidak menghapus file)
 - QR di-embed permanen ke file PDF/gambar
 - Halaman verifikasi publik (dibuka saat QR di-scan) menampilkan nama perusahaan, detail dokumen, serta nama & jabatan penandatangan
 - **Dokumen otomatis tersimpan ke Google Drive**, terpisah rapi ke subfolder "File Asli" dan "File TTD QR Code" di dalam folder tiap departemen

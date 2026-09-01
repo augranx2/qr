@@ -359,14 +359,27 @@ module.exports = {
     const doc = store.documents.find(d => d.id === id);
     if (doc) { doc.archived = archived; persistFileStore(); }
   },
-  // Removes the document record itself. Deliberately does NOT touch signature records -
-  // any QR code already printed/scanned must keep resolving on the verification page even
-  // after the document entry is deleted from the active dashboard.
+  // Removes the document record AND all of its signature records (unlike the old
+  // behavior, signatures are no longer kept around after a delete - once the actual
+  // files are gone from disk/Drive too, per DELETE /api/documents/:id, a dangling
+  // signature record would only produce a broken/misleading verification page when its
+  // QR gets scanned; deleting them together makes the verify page correctly show "not
+  // found" instead).
   async deleteDocument(id) {
     await ensureSeeded();
-    if (KV_CONFIGURED) { await kv.hdel(K.documents, id); return; }
+    if (KV_CONFIGURED) {
+      const sigsRaw = await kv.hgetall(K.signatures) || {};
+      const sigIdsToRemove = Object.entries(sigsRaw)
+        .map(([sigId, raw]) => [sigId, typeof raw === 'string' ? JSON.parse(raw) : raw])
+        .filter(([, sig]) => sig.document_id === id)
+        .map(([sigId]) => sigId);
+      if (sigIdsToRemove.length > 0) await kv.hdel(K.signatures, ...sigIdsToRemove);
+      await kv.hdel(K.documents, id);
+      return;
+    }
     const store = loadFileStore();
     store.documents = store.documents.filter(d => d.id !== id);
+    store.signatures = store.signatures.filter(s => s.document_id !== id);
     persistFileStore();
   },
 
@@ -514,9 +527,12 @@ module.exports = {
     const signer = store.users.find(u => u.id === sig.signed_by);
     return {
       ...sig,
-      doc_name: doc.doc_name, doc_number: doc.doc_number, department: doc.department,
-      signed_filename: doc.signed_filename, file_type: doc.file_type,
-      drive_view_link: doc.drive_view_link || null,
+      doc_name: doc ? doc.doc_name : null,
+      doc_number: doc ? doc.doc_number : null,
+      department: doc ? doc.department : null,
+      signed_filename: doc ? doc.signed_filename : null,
+      file_type: doc ? doc.file_type : null,
+      drive_view_link: doc ? (doc.drive_view_link || null) : null,
       signer_name: signer ? signer.full_name : 'Unknown',
       signer_department: signer ? signer.department : null,
       signer_jabatan: signer ? (signer.jabatan || null) : null

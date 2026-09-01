@@ -123,6 +123,15 @@ function canManageDocument(user, doc) {
   return user.department === doc.department;
 }
 
+// Permanent delete (which also removes the actual files from disk/Google Drive) is
+// intentionally narrower than archive/manage: only the person who originally uploaded
+// the document, or an admin, can do this - not "anyone in the same department" - since
+// it's destructive, irreversible, and invalidates any QR already printed for it.
+function canDeleteDocument(user, doc) {
+  if (user.role === 'admin') return true;
+  return doc.uploaded_by === user.id;
+}
+
 // Audit trail is restricted to admins and anyone whose jabatan indicates a
 // managerial role (Manager / Assistant Manager, in any casing/wording).
 function canViewAuditTrail(user) {
@@ -498,23 +507,39 @@ app.post('/api/documents/:id/archive', requireLogin, async (req, res) => {
   res.json({ ok: true });
 });
 
-// Permanent delete - only allowed for documents that have NEVER been signed. Once a
-// document has at least one signature, its QR code(s) may already be printed on a
-// physical document somewhere - deleting it here wouldn't remove that, but it WOULD
-// make the "no such document" lookup impossible to disambiguate from tampering, so we
-// simply don't allow it. Use Archive for signed documents instead.
+// Permanent delete - removes the document's files from local disk AND Google Drive (the
+// original upload as well as any signed/QR version), all of its signature records, then
+// the document record itself. This is deliberately allowed even for already-signed
+// documents (e.g. the wrong person signed, or the file needs to be voided) - which is
+// exactly why it's restricted to only the uploader or an admin (see canDeleteDocument),
+// not "anyone in the same department" like Archive is. Any QR already printed/scanned
+// for this document will stop resolving once this runs - use Archive instead if you just
+// want to hide a document from the dashboard without invalidating printed QR codes.
 app.delete('/api/documents/:id', requireLogin, async (req, res) => {
   const doc = await db.getDocumentById(req.params.id);
   if (!doc) return res.status(404).json({ error: 'Dokumen tidak ditemukan' });
-  if (!canManageDocument(req.user, doc)) return res.status(403).json({ error: 'Anda tidak punya izin untuk menghapus dokumen ini' });
-  const signatureCount = await db.getSignatureCountForDocument(req.params.id);
-  if (signatureCount > 0) {
-    return res.status(400).json({ error: 'Dokumen yang sudah pernah ditandatangani tidak bisa dihapus permanen (demi menjaga validitas QR yang sudah dicetak) - gunakan Arsipkan.' });
+  if (!canDeleteDocument(req.user, doc)) return res.status(403).json({ error: 'Hanya personil yang mengupload dokumen ini atau admin yang bisa menghapusnya' });
+
+  // Best-effort cleanup of the actual files - a file that's already missing/gone
+  // shouldn't block removing the (now-broken-anyway) record, so failures here are
+  // logged but never thrown back to the client.
+  for (const filePath of [
+    doc.stored_filename && path.join(UPLOAD_DIR, doc.stored_filename),
+    doc.signed_filename && path.join(SIGNED_DIR, doc.signed_filename)
+  ].filter(Boolean)) {
+    try { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); } catch (e) { console.error('Gagal menghapus file lokal:', filePath, e.message); }
   }
-  await db.deleteDocument(req.params.id);
+  if (gdrive.isConfigured()) {
+    for (const fileId of [doc.drive_original_file_id, doc.drive_file_id].filter(Boolean)) {
+      try { await gdrive.deleteFile(fileId); } catch (e) { console.error('Gagal menghapus file di Google Drive:', fileId, e.message); }
+    }
+  }
+
+  const signatureCount = await db.getSignatureCountForDocument(req.params.id);
+  await db.deleteDocument(req.params.id); // also removes this document's signature records
   await db.logAudit({
     type: 'delete_document', user_id: req.user.id, username: req.user.username, full_name: req.user.full_name,
-    document_id: doc.id, doc_name: doc.doc_name, doc_number: doc.doc_number
+    document_id: doc.id, doc_name: doc.doc_name, doc_number: doc.doc_number, was_signed: signatureCount > 0
   });
   res.json({ ok: true });
 });

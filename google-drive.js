@@ -123,4 +123,23 @@ async function downloadFileBuffer(fileId) {
   return Buffer.from(res.data);
 }
 
-module.exports = { isConfigured, uploadSignedDocument, updateSignedDocument, downloadFileBuffer };
+/**
+ * Permanently deletes a file from Google Drive (used when a document is deleted from
+ * the app, to remove both the original and signed/QR copies, not just the app's own
+ * record of them). If the file is already gone (e.g. deleted manually, or never
+ * existed), Drive returns a 404 - that's treated as success since the end state
+ * ("file no longer in Drive") is the same either way.
+ */
+async function deleteFile(fileId) {
+  if (!fileId) return;
+  const drive = getDrive();
+  try {
+    await drive.files.delete({ fileId });
+  } catch (e) {
+    const status = (e && (e.code || (e.response && e.response.status)));
+    if (status === 404) return; // already gone - nothing left to do
+    throw e;
+  }
+}
+
+module.exports = { isConfigured, uploadSignedDocument, updateSignedDocument, downloadFileBuffer, deleteFile };

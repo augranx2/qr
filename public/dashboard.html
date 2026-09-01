@@ -165,7 +165,7 @@
     <p class="sub">Dokumen yang diarsipkan tidak hilang - QR yang sudah dicetak tetap valid kalau di-scan. Bisa dikembalikan kapan saja.</p>
     <table>
       <thead>
-        <tr><th>Nama Dokumen</th><th>No. Dokumen</th><th>Departemen</th><th>Jumlah TTD</th><th>Kembalikan</th></tr>
+        <tr><th>Nama Dokumen</th><th>No. Dokumen</th><th>Departemen</th><th>Jumlah TTD</th><th>Kelola</th></tr>
       </thead>
       <tbody id="archivedDocList"></tbody>
     </table>
@@ -285,12 +285,27 @@ function canManage(doc) {
   return currentUser.department === doc.department;
 }
 
+// Permanent delete is narrower than archive/manage: only the uploader themselves or an
+// admin (not "anyone in the same department") - matches canDeleteDocument() in app.js.
+function canDelete(doc) {
+  if (!currentUser) return false;
+  if (currentUser.role === 'admin') return true;
+  return doc.uploaded_by === currentUser.id;
+}
+
 function manageCellHtml(doc) {
-  if (!canManage(doc)) return '<span style="color:var(--ink-faint);">&mdash;</span>';
-  const archiveBtn = `<a class="action" href="#" onclick="archiveDoc('${doc.id}', true); return false;" style="color:var(--amber);">Arsipkan</a>`;
-  const deleteBtn = doc.signature_count > 0
-    ? '' // signed documents can't be permanently deleted - archive only, to keep printed QR codes valid
-    : `<a class="action" href="#" onclick="deleteDoc('${doc.id}'); return false;" style="color:var(--red); margin-left:10px;">Hapus</a>`;
+  const canManageThis = canManage(doc);
+  const canDeleteThis = canDelete(doc);
+  if (!canManageThis && !canDeleteThis) return '<span style="color:var(--ink-faint);">&mdash;</span>';
+  const archiveBtn = canManageThis
+    ? `<a class="action" href="#" onclick="archiveDoc('${doc.id}', true); return false;" style="color:var(--amber);">Arsipkan</a>`
+    : '';
+  // Allowed even for documents that already have signatures (e.g. salah TTE) - the
+  // confirm dialog below makes very clear this also wipes the file from Drive and
+  // invalidates any QR already printed.
+  const deleteBtn = canDeleteThis
+    ? `<a class="action" href="#" onclick="deleteDoc('${doc.id}'); return false;" style="color:var(--red); margin-left:10px;">Hapus</a>`
+    : '';
   return archiveBtn + deleteBtn;
 }
 
@@ -405,10 +420,14 @@ function renderDocs() {
     const tr = document.createElement('tr');
     const restoreBtn = canManage(doc)
       ? `<a class="action" href="#" onclick="archiveDoc('${doc.id}', false); return false;">Kembalikan</a>`
-      : '<span style="color:var(--ink-faint);">&mdash;</span>';
+      : '';
+    const deleteBtn = canDelete(doc)
+      ? `<a class="action" href="#" onclick="deleteDoc('${doc.id}'); return false;" style="color:var(--red); margin-left:10px;">Hapus</a>`
+      : '';
+    const cell = (restoreBtn + deleteBtn) || '<span style="color:var(--ink-faint);">&mdash;</span>';
     tr.innerHTML = `<td>${doc.doc_name}</td><td>${doc.doc_number}</td><td>${doc.department}</td>
       <td><span class="badge">${doc.signature_count} TTD</span></td>
-      <td>${restoreBtn}</td>`;
+      <td>${cell}</td>`;
     return tr;
   }, 5);
 }
@@ -431,7 +450,11 @@ async function archiveDoc(docId, archived) {
 }
 
 async function deleteDoc(docId) {
-  if (!confirm('Hapus PERMANEN dokumen ini? Tindakan ini tidak bisa dibatalkan. (Hanya bisa untuk dokumen yang belum pernah ditandatangani.)')) return;
+  const doc = allDocsCache.find(d => d.id === docId);
+  const warnSigned = doc && doc.signature_count > 0
+    ? `\n\n⚠️ Dokumen ini sudah punya ${doc.signature_count} tanda tangan. QR yang sudah dicetak/discan TIDAK akan bisa diverifikasi lagi setelah dihapus.`
+    : '';
+  if (!confirm(`Hapus PERMANEN dokumen ini? File akan dihapus dari server DAN Google Drive (kalau sudah tersimpan di sana). Tindakan ini tidak bisa dibatalkan.${warnSigned}`)) return;
   const res = await fetch(`/api/documents/${docId}`, { method: 'DELETE' });
   const data = await res.json();
   if (!res.ok) { alert(data.error); return; }
