@@ -10,6 +10,19 @@
 <style>
   #allowedDeptCheckboxes { border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 14px; max-height: 220px; overflow-y: auto; }
   .dept-hint { font-size: 11px; color: var(--ink-faint); margin-top: 6px; }
+  .upload-progress-wrap {
+    display: none; margin-top: 14px; margin-bottom: 4px;
+  }
+  .upload-progress-track {
+    width: 100%; height: 8px; background: var(--border); border-radius: 999px; overflow: hidden;
+  }
+  .upload-progress-bar {
+    height: 100%; width: 0%; background: var(--brand); border-radius: 999px;
+    transition: width 0.15s var(--ease);
+  }
+  .upload-progress-label {
+    display: flex; justify-content: space-between; font-size: 12px; color: var(--ink-soft); margin-top: 6px;
+  }
 </style>
 </head>
 <body>
@@ -58,7 +71,14 @@
           <div class="dept-hint">Departemen yang tidak dicentang tidak akan bisa melihat/menandatangani dokumen ini (kecuali admin).</div>
         </div>
       </div>
-      <button type="submit" class="primary">Upload</button>
+      <div class="upload-progress-wrap" id="uploadProgressWrap">
+        <div class="upload-progress-track"><div class="upload-progress-bar" id="uploadProgressBar"></div></div>
+        <div class="upload-progress-label">
+          <span id="uploadProgressStatus">Mengupload...</span>
+          <span id="uploadProgressPercent">0%</span>
+        </div>
+      </div>
+      <button type="submit" class="primary" id="uploadBtn">Upload</button>
     </form>
   </div>
 
@@ -196,9 +216,35 @@ async function loadDepartments() {
   });
 }
 
+// Uploads the form via XMLHttpRequest (instead of fetch) specifically so we get real
+// upload-progress events - fetch has no cross-browser way to report bytes-sent progress
+// for a request body, but XHR's upload.onprogress does.
+function uploadDocumentWithProgress(formData, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/documents');
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+    });
+    xhr.onload = () => {
+      let data;
+      try { data = JSON.parse(xhr.responseText); } catch (e) { data = {}; }
+      if (xhr.status >= 200 && xhr.status < 300) resolve(data);
+      else reject(new Error(data.error || 'Gagal mengupload dokumen'));
+    };
+    xhr.onerror = () => reject(new Error('Koneksi terputus saat mengupload. Coba lagi.'));
+    xhr.send(formData);
+  });
+}
+
 document.getElementById('uploadForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const msgEl = document.getElementById('uploadMsg');
+  const uploadBtn = document.getElementById('uploadBtn');
+  const progressWrap = document.getElementById('uploadProgressWrap');
+  const progressBar = document.getElementById('uploadProgressBar');
+  const progressPercent = document.getElementById('uploadProgressPercent');
+  const progressStatus = document.getElementById('uploadProgressStatus');
   const allowedDepartments = Array.from(document.querySelectorAll('.allowed-dept-cb:checked')).map(cb => cb.value);
   const fd = new FormData();
   fd.append('doc_name', document.getElementById('doc_name').value);
@@ -206,16 +252,29 @@ document.getElementById('uploadForm').addEventListener('submit', async (e) => {
   fd.append('department', document.getElementById('department').value);
   fd.append('allowed_departments', JSON.stringify(allowedDepartments));
   fd.append('file', document.getElementById('file').files[0]);
+
+  msgEl.style.display = 'none';
+  uploadBtn.disabled = true;
+  progressWrap.style.display = 'block';
+  progressBar.style.width = '0%';
+  progressPercent.textContent = '0%';
+  progressStatus.textContent = 'Mengupload...';
+
   try {
-    const res = await fetch('/api/documents', { method: 'POST', body: fd });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error);
+    await uploadDocumentWithProgress(fd, (percent) => {
+      progressBar.style.width = percent + '%';
+      progressPercent.textContent = percent + '%';
+      if (percent >= 100) progressStatus.textContent = 'Memproses di server...'; // upload done, server still saving/embedding
+    });
     showMsg(msgEl, 'Dokumen berhasil diupload. Silakan lanjut ke penempatan QR.', 'success');
     document.getElementById('uploadForm').reset();
     loadDepartments();
     loadDocs();
   } catch (err) {
     showMsg(msgEl, err.message, 'error');
+  } finally {
+    uploadBtn.disabled = false;
+    progressWrap.style.display = 'none';
   }
 });
 

@@ -27,8 +27,17 @@
   input[type=range] { width: 100%; accent-color: var(--brand); }
   .hint { font-size: 12px; color: var(--ink-soft); margin-top: 10px; line-height: 1.5; }
   .pager { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; font-size: 13px; }
-  .pager button { padding: 5px 12px; border: 1px solid var(--border-strong); background: var(--card); border-radius: var(--radius-sm); cursor: pointer; font-weight: 500; transition: border-color 0.15s var(--ease); }
+  .pager button { padding: 5px 12px; border: 1px solid var(--border-strong); background: var(--card); color: var(--ink); border-radius: var(--radius-sm); cursor: pointer; font-weight: 500; transition: border-color 0.15s var(--ease), color 0.15s var(--ease); }
   .pager button:hover { border-color: var(--brand); color: var(--brand-dark); }
+  .qr-size-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+  .qr-size-row input[type=range] { flex: 1; }
+  .qr-size-number-wrap { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+  .qr-size-number-wrap input[type=number] {
+    width: 56px; padding: 6px 6px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+    font-size: 13px; text-align: center; -moz-appearance: textfield;
+  }
+  .qr-size-number-wrap span { font-size: 12px; color: var(--ink-soft); }
+  .qr-size-physical { font-size: 12px; color: var(--brand-dark); font-weight: 600; margin-top: 6px; }
   @media (max-width: 720px) { main { flex-direction: column; } .controls { width: 100%; } }
 </style>
 </head>
@@ -57,8 +66,15 @@
   <div class="controls">
     <div class="panel">
       <label>Ukuran QR Code</label>
-      <input type="range" id="qrSize" min="5" max="30" value="12">
-      <div class="hint">Geser kotak QR di atas dokumen ke posisi yang diinginkan, sesuaikan ukuran, lalu klik Tandatangani. Setelah tersimpan, Anda bisa langsung menempel QR lagi di posisi/halaman lain tanpa perlu kembali ke Dashboard dulu.</div>
+      <div class="qr-size-row">
+        <input type="range" id="qrSize" min="5" max="50" step="0.5" value="12">
+        <div class="qr-size-number-wrap">
+          <input type="number" id="qrSizeNumber" min="5" max="50" step="0.5" value="12">
+          <span>%</span>
+        </div>
+      </div>
+      <div class="qr-size-physical" id="qrSizePhysical"></div>
+      <div class="hint">Geser kotak QR di atas dokumen ke posisi yang diinginkan, sesuaikan ukuran (bisa juga ketik angka persen langsung supaya ukurannya seragam tiap kali minta TTD ke orang lain), lalu klik Tandatangani. Setelah tersimpan, Anda bisa langsung menempel QR lagi di posisi/halaman lain tanpa perlu kembali ke Dashboard dulu.</div>
       <div class="msg" id="signMsg" style="margin-top:10px;"></div>
       <button class="primary" id="signBtn" onclick="submitSignature()">Tandatangani Dokumen</button>
       <button class="secondary" id="doneBtn" onclick="window.location.href='/dashboard.html'" style="width:100%; margin-top:10px; padding:11px;">Selesai, Kembali ke Dashboard</button>
@@ -124,10 +140,11 @@ async function loadDoc(isInitial) {
     const img = document.getElementById('imgPreview');
     img.src = freshUrl;
     img.style.display = 'block';
-    img.onload = () => positionQrBox();
+    img.onload = () => { positionQrBox(); updatePhysicalSize(); };
   }
   if (isInitial) setupDrag(); // only attach drag listeners once - not on every refresh
   updateQrBox();
+  updatePhysicalSize();
 }
 
 async function renderPage(num) {
@@ -221,9 +238,46 @@ function setupDrag() {
   window.addEventListener('touchcancel', endDrag);
 
   document.getElementById('qrSize').addEventListener('input', (e) => {
-    qrFrac.size = e.target.value / 100;
-    updateQrBox();
+    setQrSizePercent(e.target.value, false);
   });
+  document.getElementById('qrSizeNumber').addEventListener('input', (e) => {
+    setQrSizePercent(e.target.value, true);
+  });
+}
+
+// Keeps the slider and the manual number input in sync, and updates the real-world
+// size hint (cm for PDFs, px for images) so admins can tell signers an exact,
+// reproducible number instead of eyeballing the slider each time.
+function setQrSizePercent(value, fromNumberInput) {
+  let pct = parseFloat(value);
+  if (isNaN(pct)) return;
+  pct = Math.min(50, Math.max(5, pct));
+  qrFrac.size = pct / 100;
+  const slider = document.getElementById('qrSize');
+  const number = document.getElementById('qrSizeNumber');
+  if (!fromNumberInput) number.value = pct;
+  if (fromNumberInput) slider.value = Math.min(50, Math.max(5, pct));
+  updateQrBox();
+  updatePhysicalSize();
+}
+
+function updatePhysicalSize() {
+  const el = document.getElementById('qrSizePhysical');
+  if (!doc) { el.textContent = ''; return; }
+  if (doc.file_type === 'pdf' && doc.page_width) {
+    // page_width is in PDF points (1 pt = 1/72 inch)
+    const cm = qrFrac.size * doc.page_width * (2.54 / 72);
+    el.textContent = `≈ ${cm.toFixed(1)} x ${cm.toFixed(1)} cm di atas kertas (ukuran ini bisa Anda infokan supaya seragam ke semua penandatangan)`;
+  } else {
+    const img = document.getElementById('imgPreview');
+    const naturalWidth = img && img.naturalWidth ? img.naturalWidth : null;
+    if (naturalWidth) {
+      const px = Math.round(qrFrac.size * naturalWidth);
+      el.textContent = `≈ ${px} x ${px} px pada gambar asli`;
+    } else {
+      el.textContent = '';
+    }
+  }
 }
 
 async function submitSignature() {
