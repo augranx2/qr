@@ -39,7 +39,7 @@ const TOKEN_MAX_AGE = 1000 * 60 * 60 * 8; // 8 hours
 const STAMP = {
   padTop: 0.03,     // ruang kosong di atas QR
   qrRatio: 0.80,    // lebar/tinggi QR = 80% lebar stempel, ditengahkan
-  gapQr: 0.05,      // jarak QR -> baris nama
+  gapQr: 0.015,     // jarak QR -> baris nama (dibuat rapat, quiet zone QR sudah memberi jarak visual sendiri)
   nameFont: 0.115,  // tinggi huruf nama
   gapText: 0.025,   // jarak baris nama -> baris tanggal/jam
   timeFont: 0.10,   // tinggi huruf tanggal/jam
