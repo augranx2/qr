@@ -15,14 +15,23 @@
   .doc-info b { display: inline-block; width: 120px; color: var(--ink-soft); }
   .canvas-wrap { position: relative; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; display: inline-block; box-shadow: var(--shadow-sm); }
   #pageCanvas, #imgPreview { display: block; max-width: 100%; }
+  /* Kotak template: proporsinya persis mengikuti stempel yang nanti tercetak
+     (QR persegi di atas + baris nama + baris tanggal/jam), lihat konstanta STAMP. */
   .qr-box {
-    position: absolute; border: 2px dashed var(--brand); background: rgba(11, 110, 92, 0.12);
-    cursor: move; display: flex; align-items: center; justify-content: center;
-    font-size: 10px; color: var(--brand-dark); font-weight: 700; user-select: none;
+    position: absolute; border: 2px dashed var(--brand); background: rgba(255, 255, 255, 0.93);
+    cursor: move; user-select: none; overflow: hidden; box-sizing: border-box;
+    display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
     border-radius: 4px; transition: box-shadow 0.15s var(--ease);
     touch-action: none;
   }
   .qr-box:hover { box-shadow: 0 0 0 4px rgba(11, 110, 92, 0.1); }
+  .stamp-qr {
+    box-sizing: border-box; border: 1px solid var(--brand-dark); background: rgba(11, 110, 92, 0.09);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--brand-dark); font-weight: 700; letter-spacing: 0.06em; flex-shrink: 0;
+  }
+  .stamp-name { font-weight: 700; color: #0F2620; line-height: 1; white-space: nowrap; }
+  .stamp-time { color: #3F4A48; line-height: 1; white-space: nowrap; }
   .controls { width: 270px; flex-shrink: 0; }
   input[type=range] { width: 100%; accent-color: var(--brand); }
   .hint { font-size: 12px; color: var(--ink-soft); margin-top: 10px; line-height: 1.5; }
@@ -60,7 +69,11 @@
     <div class="canvas-wrap" id="canvasWrap">
       <canvas id="pageCanvas" style="display:none;"></canvas>
       <img id="imgPreview" style="display:none;">
-      <div class="qr-box" id="qrBox">QR</div>
+      <div class="qr-box" id="qrBox">
+        <div class="stamp-qr" id="stampQr">QR</div>
+        <div class="stamp-name" id="stampName">Nama Penandatangan</div>
+        <div class="stamp-time" id="stampTime">--/--/---- --:--:-- WIB</div>
+      </div>
     </div>
   </div>
   <div class="controls">
@@ -74,7 +87,7 @@
         </div>
       </div>
       <div class="qr-size-physical" id="qrSizePhysical"></div>
-      <div class="hint">Geser kotak QR di atas dokumen ke posisi yang diinginkan, sesuaikan ukuran (bisa juga ketik angka persen langsung supaya ukurannya seragam tiap kali minta TTD ke orang lain), lalu klik Tandatangani. Setelah tersimpan, Anda bisa langsung menempel QR lagi di posisi/halaman lain tanpa perlu kembali ke Dashboard dulu.</div>
+      <div class="hint">Kotak putus-putus di dokumen adalah <b>ukuran asli stempel TTE</b> yang akan tercetak: QR di atas, lalu nama Anda dan tanggal/jam TTD. Geser ke posisi yang diinginkan, sesuaikan ukuran (bisa juga ketik angka persen langsung supaya ukurannya seragam tiap kali minta TTD ke orang lain), lalu klik Tandatangani. Setelah tersimpan, Anda bisa langsung menempel QR lagi di posisi/halaman lain tanpa perlu kembali ke Dashboard dulu.</div>
       <div class="msg" id="signMsg" style="margin-top:10px;"></div>
       <button class="primary" id="signBtn" onclick="submitSignature()">Tandatangani Dokumen</button>
       <button class="secondary" id="doneBtn" onclick="window.location.href='/dashboard.html'" style="width:100%; margin-top:10px; padding:11px;">Selesai, Kembali ke Dashboard</button>
@@ -92,14 +105,36 @@ let currentPage = 1;
 let totalPages = 1;
 let placedThisSession = 0;
 
-// QR box state as fraction of rendered page (0-1)
+// Stamp box state as fraction of rendered page (0-1). `size` = LEBAR stempel;
+// tingginya otomatis mengikuti STAMP.heightRatio.
 let qrFrac = { x: 0.7, y: 0.05, size: 0.12 };
 let dragging = false;
+
+// HARUS sama persis dengan konstanta STAMP di app.js - ini yang membuat kotak
+// template di layar berukuran sama dengan hasil cetaknya.
+const STAMP = { pad: 0.05, gapQr: 0.04, nameFont: 0.13, gapText: 0.03, timeFont: 0.11 };
+STAMP.heightRatio = 1 + STAMP.gapQr + STAMP.nameFont + STAMP.gapText + STAMP.timeFont;
+
+function formatNowWIB() {
+  try {
+    const p = new Intl.DateTimeFormat('id-ID', {
+      timeZone: 'Asia/Jakarta', day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+    }).formatToParts(new Date()).reduce((acc, part) => (acc[part.type] = part.value, acc), {});
+    return `${p.day}/${p.month}/${p.year} ${p.hour}:${p.minute}:${p.second} WIB`;
+  } catch (e) {
+    return new Date().toLocaleString('id-ID');
+  }
+}
 
 async function checkAuth() {
   const res = await fetch('/api/me');
   const data = await res.json();
-  if (!data.user) window.location.href = '/';
+  if (!data.user) { window.location.href = '/'; return; }
+  // Nama & jam di kotak template diisi apa adanya supaya yang terlihat sekarang
+  // benar-benar sama dengan yang akan tercetak nanti.
+  document.getElementById('stampName').textContent = data.user.full_name || data.user.username;
+  updateQrBox();
 }
 
 async function loadDoc(isInitial) {
@@ -175,11 +210,26 @@ function updateQrBox() {
   const box = document.getElementById('qrBox');
   const w = surface.clientWidth || surface.width;
   const h = surface.clientHeight || surface.height;
-  const size = qrFrac.size * w;
-  box.style.width = size + 'px';
-  box.style.height = size + 'px';
+  const W = qrFrac.size * w;              // lebar stempel
+  const H = W * STAMP.heightRatio;        // tinggi stempel (QR + 2 baris keterangan)
+  box.style.width = W + 'px';
+  box.style.height = H + 'px';
   box.style.left = (qrFrac.x * w) + 'px';
   box.style.top = (qrFrac.y * h) + 'px';
+
+  const pad = STAMP.pad * W;
+  box.style.padding = pad + 'px';
+  const qrEl = document.getElementById('stampQr');
+  qrEl.style.width = (W - 2 * pad) + 'px';
+  qrEl.style.height = (W - 2 * pad) + 'px';
+  qrEl.style.fontSize = Math.max(5, W * 0.16) + 'px';
+
+  const nameEl = document.getElementById('stampName');
+  const timeEl = document.getElementById('stampTime');
+  nameEl.style.fontSize = (STAMP.nameFont * W) + 'px';
+  nameEl.style.marginTop = (STAMP.gapQr * W) + 'px';
+  timeEl.style.fontSize = (STAMP.timeFont * W) + 'px';
+  timeEl.style.marginTop = (STAMP.gapText * W) + 'px';
 }
 
 function positionQrBox() { updateQrBox(); }
@@ -266,14 +316,17 @@ function updatePhysicalSize() {
   if (!doc) { el.textContent = ''; return; }
   if (doc.file_type === 'pdf' && doc.page_width) {
     // page_width is in PDF points (1 pt = 1/72 inch)
-    const cm = qrFrac.size * doc.page_width * (2.54 / 72);
-    el.textContent = `≈ ${cm.toFixed(1)} x ${cm.toFixed(1)} cm di atas kertas (ukuran ini bisa Anda infokan supaya seragam ke semua penandatangan)`;
+    const cmW = qrFrac.size * doc.page_width * (2.54 / 72);
+    const cmH = cmW * STAMP.heightRatio;
+    const cmQr = cmW * (1 - 2 * STAMP.pad);
+    el.textContent = `Stempel ≈ ${cmW.toFixed(1)} x ${cmH.toFixed(1)} cm di atas kertas ` +
+      `(QR-nya sendiri ≈ ${cmQr.toFixed(1)} cm). Angka persen ini bisa Anda infokan supaya seragam ke semua penandatangan.`;
   } else {
     const img = document.getElementById('imgPreview');
     const naturalWidth = img && img.naturalWidth ? img.naturalWidth : null;
     if (naturalWidth) {
       const px = Math.round(qrFrac.size * naturalWidth);
-      el.textContent = `≈ ${px} x ${px} px pada gambar asli`;
+      el.textContent = `Stempel ≈ ${px} x ${Math.round(px * STAMP.heightRatio)} px pada gambar asli`;
     } else {
       el.textContent = '';
     }
@@ -312,6 +365,12 @@ async function submitSignature() {
     btn.textContent = 'Tandatangani Dokumen';
   }
 }
+
+// Jam di kotak template berjalan real-time supaya jelas bahwa yang tercetak nanti
+// adalah waktu saat tombol Tandatangani ditekan, bukan waktu halaman dibuka.
+function tickStampClock() { document.getElementById('stampTime').textContent = formatNowWIB(); }
+tickStampClock();
+setInterval(tickStampClock, 1000);
 
 checkAuth();
 loadDoc(true);

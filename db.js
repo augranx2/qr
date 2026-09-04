@@ -450,7 +450,9 @@ module.exports = {
   // ---- signatures ----
   async createSignature(sig) {
     await ensureSeeded();
-    const full = { ...sig, signed_at: new Date().toISOString() };
+    // signed_at boleh dikirim pemanggil (app.js mengirimnya supaya jam di database
+    // identik dengan jam yang sudah tercetak di stempel dokumen); kalau tidak, pakai now.
+    const full = { ...sig, signed_at: sig.signed_at || new Date().toISOString() };
     if (KV_CONFIGURED) { await kv.hset(K.signatures, { [sig.id]: JSON.stringify(full) }); return; }
     const store = loadFileStore();
     store.signatures.push(full);
