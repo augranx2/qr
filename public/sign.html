@@ -111,9 +111,14 @@ let qrFrac = { x: 0.7, y: 0.05, size: 0.12 };
 let dragging = false;
 
 // HARUS sama persis dengan konstanta STAMP di app.js - ini yang membuat kotak
-// template di layar berukuran sama dengan hasil cetaknya.
-const STAMP = { pad: 0.05, gapQr: 0.04, nameFont: 0.13, gapText: 0.03, timeFont: 0.11 };
-STAMP.heightRatio = 1 + STAMP.gapQr + STAMP.nameFont + STAMP.gapText + STAMP.timeFont;
+// template di layar berukuran sama dengan hasil cetaknya. QR memakai qrRatio dari
+// lebar stempel dan ditengahkan, jadi baris nama/tanggal boleh lebih lebar dari QR.
+const STAMP = {
+  padTop: 0.03, qrRatio: 0.80, gapQr: 0.05,
+  nameFont: 0.115, gapText: 0.025, timeFont: 0.10, padBottom: 0.03
+};
+STAMP.heightRatio = STAMP.padTop + STAMP.qrRatio + STAMP.gapQr + STAMP.nameFont +
+                    STAMP.gapText + STAMP.timeFont + STAMP.padBottom;
 
 function formatNowWIB() {
   try {
@@ -217,12 +222,13 @@ function updateQrBox() {
   box.style.left = (qrFrac.x * w) + 'px';
   box.style.top = (qrFrac.y * h) + 'px';
 
-  const pad = STAMP.pad * W;
-  box.style.padding = pad + 'px';
   const qrEl = document.getElementById('stampQr');
-  qrEl.style.width = (W - 2 * pad) + 'px';
-  qrEl.style.height = (W - 2 * pad) + 'px';
-  qrEl.style.fontSize = Math.max(5, W * 0.16) + 'px';
+  const qrSide = STAMP.qrRatio * W;
+  box.style.paddingTop = (STAMP.padTop * W) + 'px';
+  box.style.paddingBottom = (STAMP.padBottom * W) + 'px';
+  qrEl.style.width = qrSide + 'px';
+  qrEl.style.height = qrSide + 'px';
+  qrEl.style.fontSize = Math.max(5, qrSide * 0.2) + 'px';
 
   const nameEl = document.getElementById('stampName');
   const timeEl = document.getElementById('stampTime');
@@ -318,7 +324,7 @@ function updatePhysicalSize() {
     // page_width is in PDF points (1 pt = 1/72 inch)
     const cmW = qrFrac.size * doc.page_width * (2.54 / 72);
     const cmH = cmW * STAMP.heightRatio;
-    const cmQr = cmW * (1 - 2 * STAMP.pad);
+    const cmQr = cmW * STAMP.qrRatio;
     el.textContent = `Stempel ≈ ${cmW.toFixed(1)} x ${cmH.toFixed(1)} cm di atas kertas ` +
       `(QR-nya sendiri ≈ ${cmQr.toFixed(1)} cm). Angka persen ini bisa Anda infokan supaya seragam ke semua penandatangan.`;
   } else {
