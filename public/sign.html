@@ -16,9 +16,11 @@
   .canvas-wrap { position: relative; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; display: inline-block; box-shadow: var(--shadow-sm); }
   #pageCanvas, #imgPreview { display: block; max-width: 100%; }
   /* Kotak template: proporsinya persis mengikuti stempel yang nanti tercetak
-     (QR persegi di atas + baris nama + baris tanggal/jam), lihat konstanta STAMP. */
+     (QR di atas + baris nama + baris tanggal/jam), lihat konstanta STAMP.
+     Garis putus-putus dan latar samar ini HANYA panduan di layar - hasil cetaknya
+     transparan, hanya QR dan hurufnya yang muncul di dokumen. */
   .qr-box {
-    position: absolute; border: 2px dashed var(--brand); background: rgba(255, 255, 255, 0.93);
+    position: absolute; border: 2px dashed var(--brand); background: rgba(255, 255, 255, 0.45);
     cursor: move; user-select: none; overflow: hidden; box-sizing: border-box;
     display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
     border-radius: 4px; transition: box-shadow 0.15s var(--ease);
@@ -87,7 +89,7 @@
         </div>
       </div>
       <div class="qr-size-physical" id="qrSizePhysical"></div>
-      <div class="hint">Kotak putus-putus di dokumen adalah <b>ukuran asli stempel TTE</b> yang akan tercetak: QR di atas, lalu nama Anda dan tanggal/jam TTD. Geser ke posisi yang diinginkan, sesuaikan ukuran (bisa juga ketik angka persen langsung supaya ukurannya seragam tiap kali minta TTD ke orang lain), lalu klik Tandatangani. Setelah tersimpan, Anda bisa langsung menempel QR lagi di posisi/halaman lain tanpa perlu kembali ke Dashboard dulu.</div>
+      <div class="hint">Kotak putus-putus di dokumen adalah <b>ukuran asli stempel TTE</b> yang akan tercetak: QR di atas, lalu nama Anda dan tanggal/jam TTD. Garis putus-putus dan latarnya hanya panduan di layar &mdash; di dokumen hanya QR dan tulisannya yang muncul, sisanya transparan. Geser ke posisi yang diinginkan, sesuaikan ukuran (bisa juga ketik angka persen langsung supaya ukurannya seragam tiap kali minta TTD ke orang lain), lalu klik Tandatangani. Setelah tersimpan, Anda bisa langsung menempel QR lagi di posisi/halaman lain tanpa perlu kembali ke Dashboard dulu.</div>
       <div class="msg" id="signMsg" style="margin-top:10px;"></div>
       <button class="primary" id="signBtn" onclick="submitSignature()">Tandatangani Dokumen</button>
       <button class="secondary" id="doneBtn" onclick="window.location.href='/dashboard.html'" style="width:100%; margin-top:10px; padding:11px;">Selesai, Kembali ke Dashboard</button>

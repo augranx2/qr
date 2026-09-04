@@ -24,21 +24,32 @@ const JWT_SECRET = process.env.SESSION_SECRET || 'change-this-secret-in-producti
 const TOKEN_MAX_AGE = 1000 * 60 * 60 * 8; // 8 hours
 
 // ---------------------------------------------------------------------------
-// Geometri "stempel" TTE: QR di atas, lalu nama penandatangan dan tanggal/jam.
-// Semua angka di bawah ini adalah FRAKSI dari lebar stempel (qr_size), supaya
-// hasilnya proporsional di kertas ukuran apa pun. Nilai yang sama persis dipakai
-// oleh kotak preview di public/sign.html - kalau salah satu diubah, ubah keduanya
-// supaya yang terlihat saat menempel sama dengan yang tercetak.
+// Geometri "stempel" TTE: QR di atas (ditengahkan), lalu nama penandatangan dan
+// tanggal/jam. Semua angka di bawah adalah FRAKSI dari LEBAR stempel (qr_size),
+// supaya proporsional di kertas ukuran apa pun.
+//
+// Catatan: QR sengaja hanya memakai sebagian lebar stempel (qrRatio), sehingga
+// baris nama/tanggal boleh lebih lebar daripada QR-nya - nama panjang tidak perlu
+// dikecilkan sampai tidak terbaca. Tidak ada garis tepi; hanya latar putih supaya
+// QR dan keterangannya tetap terbaca di atas area dokumen yang ada isinya.
+//
+// Nilai yang sama persis dipakai kotak preview di public/sign.html - kalau salah
+// satu diubah, ubah keduanya supaya yang terlihat saat menempel sama dengan cetakan.
 // ---------------------------------------------------------------------------
 const STAMP = {
-  pad: 0.05,       // jarak tepi dalam stempel
-  gapQr: 0.04,     // jarak QR -> baris nama
-  nameFont: 0.13,  // tinggi huruf nama
-  gapText: 0.03,   // jarak baris nama -> baris tanggal/jam
-  timeFont: 0.11   // tinggi huruf tanggal/jam
+  padTop: 0.03,     // ruang kosong di atas QR
+  qrRatio: 0.80,    // lebar/tinggi QR = 80% lebar stempel, ditengahkan
+  gapQr: 0.05,      // jarak QR -> baris nama
+  nameFont: 0.115,  // tinggi huruf nama
+  gapText: 0.025,   // jarak baris nama -> baris tanggal/jam
+  timeFont: 0.10,   // tinggi huruf tanggal/jam
+  padBottom: 0.03   // ruang kosong di bawah baris tanggal/jam
 };
-// tinggi total stempel = lebar x heightRatio (QR persegi + blok keterangan)
-STAMP.heightRatio = 1 + STAMP.gapQr + STAMP.nameFont + STAMP.gapText + STAMP.timeFont;
+// tinggi total stempel = lebar x heightRatio
+STAMP.heightRatio = STAMP.padTop + STAMP.qrRatio + STAMP.gapQr + STAMP.nameFont +
+                    STAMP.gapText + STAMP.timeFont + STAMP.padBottom;
+// Teks boleh memakai hampir seluruh lebar stempel (lebih lebar dari QR-nya).
+STAMP.textWidth = 0.98;
 
 // Tanggal & jam ditampilkan dalam WIB supaya seragam untuk semua penandatangan,
 // tidak ikut zona waktu server (Vercel berjalan di UTC).
@@ -87,17 +98,18 @@ function fitSvgFontSize(text, maxWidth, startSize) {
   return Math.round(size * 10) / 10;
 }
 
-// Latar putih + garis tepi + dua baris keterangan untuk dokumen gambar. QR-nya
-// sendiri ditempel terpisah di atas SVG ini (sharp composite), bukan di dalamnya.
-function buildStampSvg({ W, H, pad, qrSide, name, time }) {
-  const nameSize = fitSvgFontSize(name, W - 2 * pad, STAMP.nameFont * W);
-  const timeSize = fitSvgFontSize(time, W - 2 * pad, STAMP.timeFont * W);
-  const nameBaseline = pad + qrSide + STAMP.gapQr * W + STAMP.nameFont * W;
-  const timeBaseline = nameBaseline + STAMP.gapText * W + STAMP.timeFont * W;
+// Blok keterangan (nama + tanggal/jam) untuk dokumen gambar, dirender sebagai SVG
+// dengan latar TRANSPARAN - tidak ada rect/latar putih, jadi hanya hurufnya yang
+// terlihat di atas gambar. QR ditempel terpisah di atas SVG ini (sharp composite).
+function buildStampSvg({ W, H, name, time }) {
+  const maxTextWidth = W * STAMP.textWidth;
+  const nameSize = fitSvgFontSize(name, maxTextWidth, STAMP.nameFont * W);
+  const timeSize = fitSvgFontSize(time, maxTextWidth, STAMP.timeFont * W);
+  const nameBaseline = (STAMP.padTop + STAMP.qrRatio + STAMP.gapQr + STAMP.nameFont) * W;
+  const timeBaseline = nameBaseline + (STAMP.gapText + STAMP.timeFont) * W;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
-  <rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" fill="#ffffff" stroke="#bfbfbf" stroke-width="1"/>
-  <text x="${W / 2}" y="${nameBaseline}" text-anchor="middle" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-weight="bold" font-size="${nameSize}" fill="#0F2620">${escapeXml(name)}</text>
-  <text x="${W / 2}" y="${timeBaseline}" text-anchor="middle" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="${timeSize}" fill="#3F4A48">${escapeXml(time)}</text>
+  <text x="${W / 2}" y="${nameBaseline}" text-anchor="middle" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-weight="bold" font-size="${nameSize}" fill="#000000">${escapeXml(name)}</text>
+  <text x="${W / 2}" y="${timeBaseline}" text-anchor="middle" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="${timeSize}" fill="#000000">${escapeXml(time)}</text>
 </svg>`;
 }
 
@@ -467,7 +479,12 @@ app.post('/api/documents/:id/sign', requireLogin, async (req, res) => {
 
     const signatureId = uuidv4();
     const verifyUrl = `${BASE_URL}/verify/${signatureId}`;
-    const qrDataUrl = await QRCode.toDataURL(verifyUrl, { margin: 1, width: 300 });
+    // QR digenerate pada resolusi tinggi (1024px). Ukuran cetaknya hanya beberapa cm,
+    // jadi ini setara >600 dpi - modul QR tetap tajam saat di-zoom maupun dicetak,
+    // tidak lagi terlihat seperti gambar kecil yang dibesarkan. `margin: 2` menyisakan
+    // quiet zone putih di sekeliling QR supaya tetap bisa discan walau ditempel di
+    // atas area dokumen yang ada isinya (bagian ini satu-satunya yang tidak transparan).
+    const qrDataUrl = await QRCode.toDataURL(verifyUrl, { margin: 2, width: 1024, errorCorrectionLevel: 'M' });
     const qrPngBytes = Buffer.from(qrDataUrl.split(',')[1], 'base64');
 
     // If this document already has a QR embedded from a previous signature, keep building on
@@ -510,30 +527,35 @@ app.post('/api/documents/:id/sign', requireLogin, async (req, res) => {
       const X = qr_x * pw;
       const T = ph - (qr_y * ph); // tepi ATAS stempel dalam koordinat pdf-lib
 
-      // Latar putih + garis tipis: menjamin QR dan keterangannya tetap terbaca walau
-      // ditempel di atas area dokumen yang ada isinya/berwarna.
-      page.drawRectangle({
-        x: X, y: T - H, width: W, height: H,
-        color: rgb(1, 1, 1), borderColor: rgb(0.75, 0.75, 0.75), borderWidth: 0.5
+      // TIDAK ada latar maupun garis tepi yang digambar di sini: seluruh area stempel
+      // selain QR dibiarkan transparan, sehingga isi dokumen di belakangnya tetap
+      // terlihat. Nama dan tanggal/jam digambar sebagai TEKS PDF asli (vektor), bukan
+      // gambar - jadi tetap tajam berapa pun perbesaran dan resolusi cetaknya.
+      // Kotak putih kecil di sekitar QR datang dari quiet zone QR itu sendiri.
+
+      // QR ditengahkan dan hanya memakai sebagian lebar stempel, sehingga baris nama
+      // dan tanggal/jam di bawahnya boleh lebih lebar daripada QR-nya.
+      const qrSide = STAMP.qrRatio * W;
+      page.drawImage(pngImage, {
+        x: X + (W - qrSide) / 2,
+        y: T - (STAMP.padTop * W) - qrSide,
+        width: qrSide, height: qrSide
       });
 
-      const pad = STAMP.pad * W;
-      const qrSide = W - 2 * pad;
-      page.drawImage(pngImage, { x: X + pad, y: T - pad - qrSide, width: qrSide, height: qrSide });
-
+      const maxTextWidth = W * STAMP.textWidth;
       const nameText = sanitizeWinAnsi(stampName);
       const timeText = sanitizeWinAnsi(stampTime);
-      const nameSize = fitPdfFontSize(fontBold, nameText, W - 2 * pad, STAMP.nameFont * W);
-      const timeSize = fitPdfFontSize(fontRegular, timeText, W - 2 * pad, STAMP.timeFont * W);
-      const nameBaseline = T - pad - qrSide - (STAMP.gapQr * W) - (STAMP.nameFont * W);
-      const timeBaseline = nameBaseline - (STAMP.gapText * W) - (STAMP.timeFont * W);
+      const nameSize = fitPdfFontSize(fontBold, nameText, maxTextWidth, STAMP.nameFont * W);
+      const timeSize = fitPdfFontSize(fontRegular, timeText, maxTextWidth, STAMP.timeFont * W);
+      const nameBaseline = T - (STAMP.padTop + STAMP.qrRatio + STAMP.gapQr + STAMP.nameFont) * W;
+      const timeBaseline = nameBaseline - (STAMP.gapText + STAMP.timeFont) * W;
       page.drawText(nameText, {
         x: X + (W - fontBold.widthOfTextAtSize(nameText, nameSize)) / 2,
-        y: nameBaseline, size: nameSize, font: fontBold, color: rgb(0.06, 0.15, 0.13)
+        y: nameBaseline, size: nameSize, font: fontBold, color: rgb(0, 0, 0)
       });
       page.drawText(timeText, {
         x: X + (W - fontRegular.widthOfTextAtSize(timeText, timeSize)) / 2,
-        y: timeBaseline, size: timeSize, font: fontRegular, color: rgb(0.25, 0.29, 0.28)
+        y: timeBaseline, size: timeSize, font: fontRegular, color: rgb(0, 0, 0)
       });
 
       const finalBytes = await pdfDoc.save();
@@ -552,16 +574,15 @@ app.post('/api/documents/:id/sign', requireLogin, async (req, res) => {
       if (H > meta.height) { const k = meta.height / H; W = Math.floor(W * k); H = Math.floor(H * k); }
       if (W > meta.width) { const k = meta.width / W; W = Math.floor(W * k); H = Math.floor(H * k); }
 
-      const pad = Math.max(1, Math.round(STAMP.pad * W));
-      const qrSide = W - 2 * pad;
+      const qrSide = Math.max(24, Math.round(STAMP.qrRatio * W));
       const left = Math.max(0, Math.min(Math.round(qr_x * meta.width), meta.width - W));
       const top = Math.max(0, Math.min(Math.round(qr_y * meta.height), meta.height - H));
 
-      const stampSvg = Buffer.from(buildStampSvg({ W, H, pad, qrSide, name: stampName, time: stampTime }));
+      const stampSvg = Buffer.from(buildStampSvg({ W, H, name: stampName, time: stampTime }));
       const resizedQr = await sharpLib(qrPngBytes).resize(qrSide, qrSide).toBuffer();
       await base.composite([
         { input: stampSvg, left, top },
-        { input: resizedQr, left: left + pad, top: top + pad }
+        { input: resizedQr, left: left + Math.round((W - qrSide) / 2), top: top + Math.round(STAMP.padTop * W) }
       ]).toFile(outPath);
     }
 
