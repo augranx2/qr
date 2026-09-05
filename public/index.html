@@ -89,18 +89,21 @@
     .login-side { padding: 34px 24px 56px; align-items: flex-start; }
     .login-form { max-width: 420px; margin: 0 auto; }
   }
+  /* Di HP panel hijau cukup berisi logo dan nama perusahaan saja. Headline dan
+     daftar poin membuatnya penuh teks dan mendorong form login jauh ke bawah -
+     padahal orang membuka halaman ini untuk masuk, bukan untuk membaca. */
   @media (max-width: 620px) {
-    .login-brand { padding: 22px 20px 26px; gap: 18px; border-radius: 0 0 22px 22px; }
-    .brand-mid h2 { font-size: 23px; }
-    .brand-mid p { font-size: 13px; }
-    .brand-name { font-size: 12.5px; }
-    /* Di layar HP hanya satu poin yang dipertahankan - sisanya membuat
-       form login terdorong terlalu jauh ke bawah. */
-    .brand-point:nth-child(n+2) { display: none; }
-    .login-side { padding: 28px 20px 48px; }
+    .login-brand {
+      padding: 20px; gap: 0; border-radius: 0 0 20px 20px;
+      justify-content: center; min-height: 92px;
+    }
+    .brand-mid, .brand-points { display: none; }
+    .brand-name { font-size: 13px; }
+    .brand-unit { font-size: 11px; }
+    .brand-mark { width: 42px; height: 42px; border-radius: 12px; }
+    .brand-mark img { width: 27px; height: 27px; }
+    .login-side { padding: 30px 20px 48px; }
     .login-form h1 { font-size: 20px; }
-    .brand-mark { width: 40px; height: 40px; border-radius: 11px; }
-    .brand-mark img { width: 26px; height: 26px; }
   }
 </style>
 </head>

@@ -412,14 +412,16 @@ a.action:hover { color: var(--brand-dark); text-decoration: underline; }
 .app-shell > main { max-width: none; margin: 0; padding: 0; }
 
 .sidebar {
-  position: sticky; top: 22px; background: var(--card);
+  /* Header bersifat sticky setinggi ~58px, jadi sidebar harus menempel DI BAWAHNYA.
+     Dengan top: 22px, bagian atas sidebar tertutup header saat halaman digulir. */
+  position: sticky; top: 80px; background: var(--card);
   border: 1px solid var(--border); border-radius: 16px; padding: 16px 14px;
   box-shadow: 0 1px 2px rgba(19, 35, 31, 0.04), 0 12px 28px -18px rgba(19, 35, 31, 0.28);
   /* Sidebar tetap di tempatnya saat konten kanan digulir. Kalau isinya lebih
      tinggi daripada layar, bagian yang terpotong bisa digulir SENDIRI saat
      kursor berada di atas sidebar - overscroll-behavior mencegah gulirannya
      "menembus" ke halaman utama begitu mentok. */
-  max-height: calc(100vh - 44px);
+  max-height: calc(100vh - 102px);
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
@@ -649,21 +651,23 @@ header .notif-panel a:hover, .notif-head a:hover {
 
   /* Sidebar jadi satu baris menu yang bisa digeser, tanpa judul seksi -
      di layar sempit judul seksi memakan tiga baris tinggi tanpa memberi info. */
+  /* Menu dibiarkan MEMBUNGKUS ke baris berikutnya, bukan disembunyikan di
+     guliran samping. Menu yang harus digeser dulu supaya terlihat praktis
+     tidak akan ditemukan orang yang baru pertama membuka lewat HP. */
   .sidebar {
-    display: flex; align-items: center; gap: 6px; padding: 8px;
-    overflow-x: auto; border-radius: 14px; -webkit-overflow-scrolling: touch;
-    /* Di HP sidebar jadi baris menu horizontal, jadi pembatas tinggi dan
-       guliran vertikal untuk versi desktop dimatikan. */
-    max-height: none; overflow-y: hidden; position: static;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 9px;
+    border-radius: 14px; max-height: none; overflow: visible; position: static;
   }
-  .sidebar::-webkit-scrollbar { display: none; }
   .sidebar h3 { display: none; }
-  /* Kartu profil tetap bisa dijangkau di HP, hanya diringkas jadi avatar saja */
-  .side-user { width: auto; margin: 0; padding: 6px; flex-shrink: 0; }
-  .side-user-text, .side-user-caret { display: none; }
-  .side-avatar { width: 30px; height: 30px; border-radius: 9px; font-size: 11.5px; }
-  .side-nav { flex-direction: row; gap: 5px; flex-shrink: 0; }
-  .side-nav + .side-nav { border-left: 1px solid var(--border); padding-left: 6px; }
+  /* Kartu profil jadi chip ringkas berisi avatar + nama - avatar sendirian
+     ("MK") tidak memberi tahu apa pun tentang fungsinya. */
+  .side-user { width: auto; margin: 0 0 2px; padding: 5px 10px 5px 5px; gap: 8px; }
+  .side-user-dept, .side-user-caret { display: none; }
+  .side-user-name { font-size: 12px; }
+  .side-avatar { width: 26px; height: 26px; border-radius: 8px; font-size: 10.5px; }
+  .side-nav { flex-direction: row; flex-wrap: wrap; gap: 5px; }
+  .side-nav:first-of-type { width: 100%; }
+  .side-nav + .side-nav { border-left: 1px solid var(--border); padding-left: 7px; }
   .side-link { white-space: nowrap; width: auto; padding: 8px 12px; font-size: 12.5px; gap: 7px; }
   .side-link.active::before { display: none; }
   .side-link .side-ico { width: 15px; height: 15px; }
@@ -726,7 +730,12 @@ header .notif-panel a:hover, .notif-head a:hover {
   .who { display: none; }
   .notif-label { display: none; }
   .notif-btn { padding: 6px 11px; }
-  .notif-panel { width: min(340px, calc(100vw - 28px)); right: -4px; }
+  /* Dipatok ke viewport, bukan ke tombol loncengnya. Kalau relatif ke tombol,
+     panel selebar 340px akan menjulur keluar tepi kiri layar dan terpotong. */
+  .notif-panel {
+    position: fixed; top: 62px; left: 10px; right: 10px; width: auto;
+    max-height: calc(100vh - 90px);
+  }
 }
 @media (max-width: 400px) {
   header h1 { font-size: 0; }
