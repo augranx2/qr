@@ -26,6 +26,11 @@
     border-radius: 4px; transition: box-shadow 0.15s var(--ease);
     touch-action: none;
   }
+  /* touch-action TIDAK diwariskan ke elemen anak. Tanpa aturan ini, jari yang
+     mendarat di kotak QR / baris nama di dalamnya dianggap gestur menggulir
+     halaman oleh browser, dan kotaknya tidak bisa digeser di HP.
+     pointer-events: none membuat semua sentuhan diarahkan ke kotak induknya. */
+  .qr-box * { touch-action: none; pointer-events: none; }
   .qr-box:hover { box-shadow: 0 0 0 4px rgba(11, 110, 92, 0.1); }
   .stamp-qr {
     box-sizing: border-box; border: 1px solid var(--brand-dark); background: rgba(11, 110, 92, 0.09);

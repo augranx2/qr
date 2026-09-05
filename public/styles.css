@@ -414,14 +414,15 @@ a.action:hover { color: var(--brand-dark); text-decoration: underline; }
 .sidebar {
   /* Header bersifat sticky setinggi ~58px, jadi sidebar harus menempel DI BAWAHNYA.
      Dengan top: 22px, bagian atas sidebar tertutup header saat halaman digulir. */
-  position: sticky; top: 80px; background: var(--card);
-  border: 1px solid var(--border); border-radius: 16px; padding: 16px 14px;
+  position: sticky; top: 80px;
+  background: linear-gradient(180deg, #FFFFFF 0%, #F6FAF8 100%);
+  border: 1px solid var(--border); border-radius: 16px; padding: 12px 11px;
   box-shadow: 0 1px 2px rgba(19, 35, 31, 0.04), 0 12px 28px -18px rgba(19, 35, 31, 0.28);
   /* Sidebar tetap di tempatnya saat konten kanan digulir. Kalau isinya lebih
      tinggi daripada layar, bagian yang terpotong bisa digulir SENDIRI saat
      kursor berada di atas sidebar - overscroll-behavior mencegah gulirannya
      "menembus" ke halaman utama begitu mentok. */
-  max-height: calc(100vh - 102px);
+  max-height: calc(100vh - 96px);
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
@@ -431,14 +432,14 @@ a.action:hover { color: var(--brand-dark); text-decoration: underline; }
 .sidebar::-webkit-scrollbar-track { background: transparent; }
 .sidebar h3 {
   font-family: var(--font-display); font-size: 10px; letter-spacing: 0.13em;
-  text-transform: uppercase; color: var(--ink-faint); margin: 20px 12px 8px; font-weight: 600;
+  text-transform: uppercase; color: var(--ink-faint); margin: 14px 12px 6px; font-weight: 700;
 }
 .sidebar h3:first-child { margin-top: 2px; }
 .side-nav { display: flex; flex-direction: column; gap: 3px; }
 
 .side-link {
   position: relative; display: flex; align-items: center; gap: 11px;
-  padding: 10px 12px; border-radius: 11px; font-size: 13.5px;
+  padding: 8px 12px; border-radius: 10px; font-size: 13.5px;
   color: var(--ink-soft); cursor: pointer; border: none; background: none;
   text-align: left; width: 100%; font-family: var(--font-body); text-decoration: none;
   transition: background 0.15s var(--ease), color 0.15s var(--ease), transform 0.15s var(--ease);
@@ -469,9 +470,25 @@ a.action:hover { color: var(--brand-dark); text-decoration: underline; }
 .side-link.active .side-count { background: rgba(11, 110, 92, 0.15); color: var(--brand-dark); }
 /* Menu "Perlu TTD Saya" diberi warna berbeda hanya ketika benar-benar ada
    dokumen menunggu - kalau kosong ia tampil netral seperti menu lain. */
-.side-link.attention.has-items .side-count { background: var(--amber-soft); color: var(--amber); font-weight: 600; }
-.side-link.cta { color: var(--brand-dark); font-weight: 600; }
-.side-link.cta:hover { background: var(--brand-soft); }
+/* Badge diberi warna sesuai arti statusnya, bukan abu-abu semua: kuning untuk
+   yang menunggu tindakan, hijau untuk yang sudah selesai. Warna di sini
+   membantu membaca sekilas, bukan sekadar hiasan. */
+.side-link.attention.has-items .side-count { background: var(--amber-soft); color: var(--amber); font-weight: 700; }
+.side-link[data-view="pending"] .side-count,
+.side-link[data-view="partial"] .side-count { background: var(--slate-soft); color: var(--slate); }
+.side-link[data-view="complete"] .side-count { background: var(--green-soft); color: var(--green); }
+.side-link[data-view="pending"] .side-ico { color: var(--slate); opacity: 0.75; }
+.side-link[data-view="partial"] .side-ico { color: var(--amber); opacity: 0.8; }
+.side-link[data-view="complete"] .side-ico { color: var(--green); opacity: 0.8; }
+.side-link[data-view="inbox"] .side-ico { color: var(--brand); opacity: 0.85; }
+.side-link.active .side-ico { color: var(--brand); opacity: 1; }
+.side-link.cta {
+  background: var(--brand-soft); color: var(--brand-dark);
+  border: 1px dashed rgba(11, 110, 92, 0.35);
+}
+.side-link.cta .side-ico { color: var(--brand); opacity: 1; }
+.side-link.cta:hover { background: rgba(11, 110, 92, 0.13); border-style: solid; }
+.side-link.cta { font-weight: 600; }
 
 .side-user {
   display: flex; align-items: center; gap: 10px; padding: 12px 10px 14px;
@@ -808,7 +825,7 @@ header .notif-panel a:hover, .notif-head a:hover {
 /* Kartu identitas di sidebar sekarang sebuah tombol menuju profil */
 .side-user {
   display: flex; align-items: center; gap: 10px; width: 100%;
-  padding: 10px; margin: 0 0 10px; background: var(--paper);
+  padding: 9px; margin: 0 0 6px; background: var(--paper);
   border: 1px solid var(--border); border-radius: 12px; cursor: pointer;
   text-align: left; color: inherit;
   transition: border-color 0.15s var(--ease), background 0.15s var(--ease);

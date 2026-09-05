@@ -21,9 +21,40 @@
   </div>
   <a href="/dashboard.html">&larr; Kembali ke Dashboard</a>
 </header>
+
+<div class="app-shell">
+  <aside class="sidebar">
+    <h3>Kelola</h3>
+    <nav class="side-nav">
+      <button class="side-link" data-view="add" onclick="setAdminView('add')">
+        <svg class="side-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M19 8v6"></path><path d="M22 11h-6"></path></svg>
+        <span class="side-label">Tambah Personil</span>
+      </button>
+      <button class="side-link" data-view="list" onclick="setAdminView('list')">
+        <svg class="side-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+        <span class="side-label">Daftar Personil</span><span class="side-count" id="cnt-users">0</span>
+      </button>
+      <button class="side-link" data-view="dept" onclick="setAdminView('dept')">
+        <svg class="side-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"></path></svg>
+        <span class="side-label">Departemen &amp; Drive</span><span class="side-count" id="cnt-depts">0</span>
+      </button>
+    </nav>
+    <h3>Lainnya</h3>
+    <nav class="side-nav">
+      <a class="side-link" href="/dashboard.html">
+        <svg class="side-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 9-7 9 7"></path><path d="M5 10v9a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-9"></path></svg>
+        <span class="side-label">Dashboard</span>
+      </a>
+      <a class="side-link" href="/audit.html">
+        <svg class="side-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v5h5"></path><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8Z"></path><path d="M9 13h6"></path><path d="M9 17h4"></path></svg>
+        <span class="side-label">Audit Trail</span>
+      </a>
+    </nav>
+  </aside>
+
 <main>
 
-  <div class="panel">
+  <div class="panel admin-view" id="view-add">
     <div class="panel-kop"><h2>Tambah Personil Baru</h2></div>
     <p class="sub">Personil yang ditambahkan bisa langsung login memakai username &amp; password ini.</p>
     <div class="msg" id="userMsg"></div>
@@ -47,7 +78,7 @@
     </form>
   </div>
 
-  <div class="panel">
+  <div class="panel admin-view" id="view-list" style="display:none;">
     <div class="panel-kop"><h2>Daftar Personil</h2><span class="kop-badge" id="userCount">0 personil</span></div>
     <table>
       <thead><tr><th>Username</th><th>Nama</th><th>Jabatan</th><th>Departemen</th><th>Peran</th><th>Aksi</th></tr></thead>
@@ -55,7 +86,7 @@
     </table>
   </div>
 
-  <div class="panel">
+  <div class="panel admin-view" id="view-dept" style="display:none;">
     <div class="panel-kop"><h2>Departemen &amp; Folder Google Drive</h2></div>
     <p class="sub">Daftar ini yang muncul sebagai pilihan departemen saat upload dokumen. Folder Google Drive dibuat otomatis saat dokumen pertama dari departemen tersebut ditandatangani — atau Anda bisa mengaitkannya ke folder yang sudah ada dengan menempel Folder ID di bawah.</p>
     <div class="msg" id="deptMsg"></div>
@@ -76,7 +107,19 @@
   </div>
 
 </main>
+</div>
 <script>
+// Satu bagian tampil pada satu waktu, dipilih lewat sidebar - halaman admin
+// sebelumnya menumpuk tiga panel panjang dalam satu gulungan.
+function setAdminView(view) {
+  document.querySelectorAll('.admin-view').forEach(el => {
+    el.style.display = el.id === 'view-' + view ? 'block' : 'none';
+  });
+  document.querySelectorAll('.side-link[data-view]').forEach(el => {
+    el.classList.toggle('active', el.dataset.view === view);
+  });
+}
+
 function showMsg(el, text, type) {
   el.textContent = text; el.className = 'msg ' + type; el.style.display = 'block';
   setTimeout(() => { el.style.display = 'none'; }, 4000);
@@ -104,6 +147,7 @@ function renderUserRows() {
   const tbody = document.getElementById('userList');
   tbody.innerHTML = '';
   document.getElementById('userCount').textContent = `${cachedUsers.length} personil`;
+  document.getElementById('cnt-users').textContent = cachedUsers.length;
   cachedUsers.forEach(u => {
     const tr = document.createElement('tr');
     tr.id = `user-row-${u.id}`;
@@ -199,6 +243,7 @@ async function loadDepartments() {
   const res = await fetch('/api/departments');
   const data = await res.json();
   cachedDepartmentNames = data.departments.map(d => d.name);
+  document.getElementById('cnt-depts').textContent = data.departments.length;
 
   const select = document.getElementById('new_department');
   select.innerHTML = data.departments.map(d => `<option value="${d.name}">${d.name}</option>`).join('');
@@ -270,6 +315,7 @@ async function linkFolder(deptName) {
 checkAuth();
 loadUsers();
 loadDepartments();
+setAdminView('list');
 </script>
 </body>
 </html>
