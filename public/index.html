@@ -160,6 +160,13 @@
     </section>
   </div>
 <script>
+// Pesan saat pengguna dilempar balik ke sini karena sesinya habis
+if (new URLSearchParams(location.search).get('expired')) {
+  const errBox = document.getElementById('err');
+  errBox.textContent = 'Sesi Anda telah berakhir karena tidak ada aktivitas. Silakan login kembali.';
+  errBox.style.display = 'block';
+}
+
 document.getElementById('loginForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const username = document.getElementById('username').value;

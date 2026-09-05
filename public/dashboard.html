@@ -200,6 +200,13 @@
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
             <input type="text" id="searchBox" placeholder="Cari nama atau nomor dokumen...">
           </div>
+          <select id="sortBox" class="sort-box" title="Urutkan dokumen">
+            <option value="newest">Terbaru diupload</option>
+            <option value="oldest">Terlama diupload</option>
+            <option value="name_asc">Nama A → Z</option>
+            <option value="name_desc">Nama Z → A</option>
+            <option value="number_asc">No. Dokumen A → Z</option>
+          </select>
           <button type="button" class="primary" id="searchBtn" style="width:auto; margin:0; padding:11px 20px; white-space:nowrap; display:flex; align-items:center; gap:7px;">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
             <span class="btn-label">Cari</span>
@@ -261,6 +268,18 @@
 </div>
 
 <script>
+// Sesi berakhir (idle 30 menit / batas absolut 12 jam): server membalas 401,
+// dan halaman langsung diarahkan ke login daripada diam-diam gagal memuat data.
+(function () {
+  const origFetch = window.fetch;
+  window.fetch = async function (...args) {
+    const res = await origFetch.apply(this, args);
+    if (res.status === 401 && !location.pathname.endsWith('/index.html') && location.pathname !== '/') {
+      location.href = '/?expired=1';
+    }
+    return res;
+  };
+})();
 let currentUser = null;
 let allDocsCache = [];
 let directoryCache = [];
@@ -661,6 +680,29 @@ function needsMySignature(doc) {
   return false;
 }
 
+// Tanggal upload ditampilkan singkat (6 Sep 2026) - cukup untuk membedakan
+// dokumen, tanpa memenuhi kolom seperti tanggal lengkap dengan jam.
+function formatUploadDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d)) return '';
+  return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Jakarta' });
+}
+
+// Default 'newest': dokumen terbaru selalu di atas, sesuai urutan dari server.
+function sortDocs(docs) {
+  const mode = (document.getElementById('sortBox') || {}).value || 'newest';
+  const copy = [...docs];
+  const time = d => new Date(d.created_at || 0).getTime();
+  switch (mode) {
+    case 'oldest': return copy.sort((a, b) => time(a) - time(b));
+    case 'name_asc': return copy.sort((a, b) => a.doc_name.localeCompare(b.doc_name, 'id'));
+    case 'name_desc': return copy.sort((a, b) => b.doc_name.localeCompare(a.doc_name, 'id'));
+    case 'number_asc': return copy.sort((a, b) => a.doc_number.localeCompare(b.doc_number, 'id'));
+    default: return copy.sort((a, b) => time(b) - time(a));
+  }
+}
+
 // ---------- DAFTAR DOKUMEN ----------
 async function loadDocs() {
   const res = await fetch('/api/documents');
@@ -746,7 +788,7 @@ function renderDocs() {
   if (currentView === 'upload') return;
   const query = (document.getElementById('searchBox').value || '').trim().toLowerCase();
   const matches = doc => !query || doc.doc_name.toLowerCase().includes(query) || doc.doc_number.toLowerCase().includes(query);
-  const docs = bucketize()[currentView].filter(matches);
+  const docs = sortDocs(bucketize()[currentView].filter(matches));
 
   const tbody = document.getElementById('docList');
   tbody.innerHTML = '';
@@ -756,11 +798,13 @@ function renderDocs() {
   docs.forEach(doc => {
     const tr = document.createElement('tr');
     const nameCell = document.createElement('td');
-    nameCell.innerHTML = `<div class="doc-title"></div><div class="doc-num"></div>`;
+    nameCell.innerHTML = `<div class="doc-title"></div><div class="doc-num"></div><div class="doc-date"></div>`;
     // Nama & nomor dokumen diisi lewat textContent (bukan innerHTML) supaya judul
     // dokumen yang mengandung karakter HTML tidak bisa menyuntik markup ke dashboard.
     nameCell.querySelector('.doc-title').textContent = doc.doc_name;
     nameCell.querySelector('.doc-num').textContent = `${doc.doc_number} · ${doc.department}`;
+    nameCell.querySelector('.doc-date').textContent = doc.created_at
+      ? `Diupload ${formatUploadDate(doc.created_at)}` : '';
     tr.appendChild(nameCell);
 
     const progressCell = document.createElement('td');
@@ -787,6 +831,7 @@ function renderDocs() {
 document.getElementById('searchBox').addEventListener('input', renderDocs);
 document.getElementById('searchBox').addEventListener('keydown', (e) => { if (e.key === 'Enter') renderDocs(); });
 document.getElementById('searchBtn').addEventListener('click', renderDocs);
+document.getElementById('sortBox').addEventListener('change', renderDocs);
 
 async function archiveDoc(docId, archived) {
   const confirmMsg = archived

@@ -102,6 +102,18 @@
   </div>
 </main>
 <script>
+// Sesi berakhir (idle 30 menit / batas absolut 12 jam): server membalas 401,
+// dan halaman langsung diarahkan ke login daripada diam-diam gagal memuat data.
+(function () {
+  const origFetch = window.fetch;
+  window.fetch = async function (...args) {
+    const res = await origFetch.apply(this, args);
+    if (res.status === 401 && !location.pathname.endsWith('/index.html') && location.pathname !== '/') {
+      location.href = '/?expired=1';
+    }
+    return res;
+  };
+})();
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
 const params = new URLSearchParams(window.location.search);

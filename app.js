@@ -21,7 +21,19 @@ for (const dir of [UPLOAD_DIR, SIGNED_DIR]) {
 }
 
 const JWT_SECRET = process.env.SESSION_SECRET || 'change-this-secret-in-production';
-const TOKEN_MAX_AGE = 1000 * 60 * 60 * 8; // 8 hours
+// ---------------------------------------------------------------------------
+// Kebijakan sesi login
+// Mengikuti praktik yang lazim dipakai untuk sistem terkendali (NIST SP 800-63B
+// AAL2, yang juga jadi rujukan umum kontrol akses ISO 27001 A.9 / Annex A 8.5):
+//   - IDLE  : sesi berakhir setelah 30 menit tanpa aktivitas
+//   - ABSOLUT: sesi wajib login ulang setelah 12 jam, seaktif apa pun pemakainya
+// Batas idle diperbarui setiap kali ada request (sliding), jadi orang yang sedang
+// bekerja tidak tiba-tiba terlempar keluar; yang meninggalkan browser terbuka
+// atau menutupnya tanpa logout akan kedaluwarsa sendiri.
+// ---------------------------------------------------------------------------
+const IDLE_TIMEOUT_MS = 1000 * 60 * 30;        // 30 menit tanpa aktivitas
+const ABSOLUTE_SESSION_MS = 1000 * 60 * 60 * 12; // 12 jam sejak login
+const TOKEN_MAX_AGE = IDLE_TIMEOUT_MS;
 
 // ---------------------------------------------------------------------------
 // Geometri "stempel" TTE: QR di atas (ditengahkan), lalu nama penandatangan dan
@@ -146,16 +158,61 @@ function getUserFromRequest(req) {
   const token = req.cookies && req.cookies.auth_token;
   if (!token) return null;
   try {
-    return jwt.verify(token, JWT_SECRET);
+    const payload = jwt.verify(token, JWT_SECRET);
+    // Batas absolut: token bisa saja masih "hidup" karena terus diperpanjang,
+    // tapi sesi tetap harus berakhir 12 jam setelah login pertama.
+    if (payload.loginAt && Date.now() - payload.loginAt > ABSOLUTE_SESSION_MS) return null;
+    return payload;
   } catch (e) {
-    return null; // expired or tampered token
+    return null; // kedaluwarsa atau token dirusak
   }
+}
+
+function issueSessionCookie(res, payload) {
+  const token = jwt.sign(payload, JWT_SECRET, { expiresIn: Math.floor(IDLE_TIMEOUT_MS / 1000) });
+  res.cookie('auth_token', token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production' || !!process.env.VERCEL,
+    sameSite: 'lax',
+    maxAge: TOKEN_MAX_AGE
+  });
+}
+
+// Mencatat berakhirnya sesi ke audit trail. Server tidak punya cara "tahu" bahwa
+// seseorang menutup browser, jadi yang dicatat adalah saat token kedaluwarsa itu
+// dipakai lagi - dari situ terlihat kapan sesinya berakhir dan milik siapa.
+async function logExpiredSession(req) {
+  const token = req.cookies && req.cookies.auth_token;
+  if (!token) return;
+  try {
+    const stale = jwt.decode(token);
+    if (!stale || !stale.username) return;
+    await db.logAudit({
+      type: 'session_expired', user_id: stale.id, username: stale.username,
+      full_name: stale.full_name
+    });
+  } catch (e) { /* token tidak bisa dibaca - tidak ada yang bisa dicatat */ }
 }
 
 function requireLogin(req, res, next) {
   const user = getUserFromRequest(req);
-  if (!user) return res.status(401).json({ error: 'Belum login' });
+  if (!user) {
+    // Cookie ada tapi sudah kedaluwarsa -> catat sekali lalu bersihkan cookienya,
+    // supaya tidak dicatat berulang setiap request dari tab yang sama.
+    if (req.cookies && req.cookies.auth_token) {
+      logExpiredSession(req).catch(() => {});
+      res.clearCookie('auth_token');
+    }
+    return res.status(401).json({ error: 'Sesi Anda telah berakhir. Silakan login kembali.', expired: true });
+  }
   req.user = user;
+  // Sliding expiration: setiap aktivitas memperpanjang batas idle 30 menit,
+  // tanpa menggeser batas absolut karena loginAt ikut dibawa apa adanya.
+  issueSessionCookie(res, {
+    id: user.id, username: user.username, full_name: user.full_name,
+    department: user.department, role: user.role, jabatan: user.jabatan || null,
+    loginAt: user.loginAt || Date.now()
+  });
   next();
 }
 
@@ -166,14 +223,12 @@ app.post('/api/login', async (req, res) => {
   if (!user || !bcrypt.compareSync(password, user.password_hash)) {
     return res.status(401).json({ error: 'Username atau password salah' });
   }
-  const payload = { id: user.id, username: user.username, full_name: user.full_name, department: user.department, role: user.role, jabatan: user.jabatan || null };
-  const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '8h' });
-  res.cookie('auth_token', token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production' || !!process.env.VERCEL,
-    sameSite: 'lax',
-    maxAge: TOKEN_MAX_AGE
-  });
+  const payload = {
+    id: user.id, username: user.username, full_name: user.full_name,
+    department: user.department, role: user.role, jabatan: user.jabatan || null,
+    loginAt: Date.now() // penanda untuk batas sesi absolut 12 jam
+  };
+  issueSessionCookie(res, payload);
   await db.logAudit({ type: 'login', user_id: user.id, username: user.username, full_name: user.full_name });
   res.json({ user: payload });
 });
@@ -880,7 +935,7 @@ app.get('/api/audit-log/export', requireLogin, requireAuditAccess, async (req, r
     login: 'Login', logout: 'Logout', upload_document: 'Upload Dokumen',
     sign_document: 'Tanda Tangan', change_password: 'Ganti Password',
     archive_document: 'Arsipkan Dokumen', unarchive_document: 'Kembalikan dari Arsip',
-    delete_document: 'Hapus Dokumen'
+    delete_document: 'Hapus Dokumen', session_expired: 'Sesi Berakhir'
   };
   // Bungkus tiap sel dengan tanda kutip dan gandakan kutip di dalamnya - nama dokumen
   // sering mengandung koma, yang tanpa ini akan menggeser kolom di Excel.

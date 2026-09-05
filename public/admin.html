@@ -80,10 +80,10 @@
 
   <div class="panel admin-view" id="view-list" style="display:none;">
     <div class="panel-kop"><h2>Daftar Personil</h2><span class="kop-badge" id="userCount">0 personil</span></div>
-    <table>
+    <div class="table-scroll"><table>
       <thead><tr><th>Username</th><th>Nama</th><th>Jabatan</th><th>Departemen</th><th>Peran</th><th>Aksi</th></tr></thead>
       <tbody id="userList"></tbody>
-    </table>
+    </table></div>
   </div>
 
   <div class="panel admin-view" id="view-dept" style="display:none;">
@@ -100,15 +100,27 @@
     </div>
 
     <button class="secondary" onclick="resetDepartmentsDefault()" style="margin-bottom:12px;">Reset ke 11 Departemen Default (QA, QC, Production, dst)</button>
-    <table>
+    <div class="table-scroll"><table>
       <thead><tr><th>Departemen</th><th>Folder Drive</th><th>Aksi</th></tr></thead>
       <tbody id="deptList"></tbody>
-    </table>
+    </table></div>
   </div>
 
 </main>
 </div>
 <script>
+// Sesi berakhir (idle 30 menit / batas absolut 12 jam): server membalas 401,
+// dan halaman langsung diarahkan ke login daripada diam-diam gagal memuat data.
+(function () {
+  const origFetch = window.fetch;
+  window.fetch = async function (...args) {
+    const res = await origFetch.apply(this, args);
+    if (res.status === 401 && !location.pathname.endsWith('/index.html') && location.pathname !== '/') {
+      location.href = '/?expired=1';
+    }
+    return res;
+  };
+})();
 // Satu bagian tampil pada satu waktu, dipilih lewat sidebar - halaman admin
 // sebelumnya menumpuk tiga panel panjang dalam satu gulungan.
 function setAdminView(view) {

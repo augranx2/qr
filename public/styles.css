@@ -865,3 +865,26 @@ header .notif-panel a:hover, .notif-head a:hover {
 }
 .notif-tag.new { background: var(--brand-soft); color: var(--brand-dark); }
 .notif-tag.done { background: var(--green-soft); color: var(--green); }
+
+/* Tabel lebar (daftar personil, departemen) dibungkus agar bisa digeser
+   mendatar. Tanpa ini kolom Aksi paling kanan terpotong oleh
+   "overflow: hidden" milik .panel dan tombol Hapus tidak bisa dijangkau. */
+.table-scroll {
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  margin: 0 -2px; padding-bottom: 4px;
+}
+.table-scroll table { min-width: 720px; }
+.table-scroll::-webkit-scrollbar { height: 8px; }
+.table-scroll::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 999px; }
+.table-scroll::-webkit-scrollbar-track { background: var(--paper); border-radius: 999px; }
+
+.sort-box {
+  width: auto; margin: 0; flex-shrink: 0; padding: 11px 13px;
+  font-size: 12.5px; color: var(--ink-soft); background: var(--card);
+}
+.doc-date { font-size: 11px; color: var(--ink-faint); margin-top: 4px; }
+@media (max-width: 620px) {
+  .search-bar { flex-wrap: wrap; }
+  .search-field { flex: 1 1 100%; }
+  .sort-box { flex: 1; }
+}

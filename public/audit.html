@@ -34,6 +34,18 @@
   </div>
 </main>
 <script>
+// Sesi berakhir (idle 30 menit / batas absolut 12 jam): server membalas 401,
+// dan halaman langsung diarahkan ke login daripada diam-diam gagal memuat data.
+(function () {
+  const origFetch = window.fetch;
+  window.fetch = async function (...args) {
+    const res = await origFetch.apply(this, args);
+    if (res.status === 401 && !location.pathname.endsWith('/index.html') && location.pathname !== '/') {
+      location.href = '/?expired=1';
+    }
+    return res;
+  };
+})();
 const LABELS = {
   login: ['Login', 'login'],
   logout: ['Logout', 'logout'],
@@ -42,7 +54,8 @@ const LABELS = {
   change_password: ['Ganti Password', 'logout'],
   archive_document: ['Arsipkan Dokumen', 'sign_document'],
   unarchive_document: ['Kembalikan dari Arsip', 'upload_document'],
-  delete_document: ['Hapus Dokumen', 'logout']
+  delete_document: ['Hapus Dokumen', 'logout'],
+  session_expired: ['Sesi Berakhir', 'logout']
 };
 
 function downloadCsv() {
@@ -57,11 +70,27 @@ async function checkAuth() {
   if (!data.user) { window.location.href = '/'; return; }
 }
 
+function esc(v) {
+  return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// Sebelumnya kolom Detail hanya diisi untuk upload dan tanda tangan, sehingga
+// penghapusan dokumen - justru aktivitas yang paling perlu ditelusuri - tampil
+// sebagai tanda strip tanpa keterangan apa pun.
 function detailFor(entry) {
-  if (entry.type === 'upload_document' || entry.type === 'sign_document') {
-    return `${entry.doc_number || ''} - ${entry.doc_name || ''}`;
+  const parts = [];
+  if (entry.doc_number || entry.doc_name) {
+    parts.push(`<span class="mono">${esc(entry.doc_number || '-')}</span> ${esc(entry.doc_name || '')}`);
   }
-  return '-';
+  if (entry.type === 'session_expired') {
+    parts.push('<span class="detail-note">sesi berakhir otomatis (tidak ada aktivitas / browser ditutup tanpa logout)</span>');
+  }
+  if (entry.type === 'delete_document') {
+    parts.push(entry.was_signed
+      ? '<span class="detail-warn">dihapus permanen — dokumen ini sudah punya tanda tangan</span>'
+      : '<span class="detail-note">dihapus permanen</span>');
+  }
+  return parts.length ? parts.join('<br>') : '<span class="detail-note">&mdash;</span>';
 }
 
 async function loadLog() {
@@ -83,7 +112,7 @@ async function loadLog() {
     const label = LABELS[entry.type] ? LABELS[entry.type][0] : entry.type;
     const cssClass = LABELS[entry.type] ? LABELS[entry.type][1] : '';
     const when = new Date(entry.timestamp).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
-    tr.innerHTML = `<td>${when}</td><td><span class="badge ${cssClass}">${label}</span></td><td>${entry.full_name || entry.username || '-'}</td><td>${detailFor(entry)}</td>`;
+    tr.innerHTML = `<td>${when}</td><td><span class="badge ${cssClass}">${label}</span></td><td>${entry.full_name || entry.username || '-'}</td><td class="detail-cell">${detailFor(entry)}</td>`;
     tbody.appendChild(tr);
   });
 }
