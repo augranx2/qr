@@ -612,23 +612,95 @@ a.action:hover { color: var(--brand-dark); text-decoration: underline; }
   color: var(--brand-dark); font-weight: 600;
 }
 
+/* ============================================================
+   Mobile / tablet
+   Dua masalah utama yang diperbaiki di sini: tabel dokumen yang
+   memaksa halaman melebar ke samping, dan tombol pencarian yang
+   ikut melar selebar layar saat baris berubah jadi kolom.
+   ============================================================ */
 @media (max-width: 900px) {
-  .app-shell { grid-template-columns: 1fr; gap: 16px; margin-top: 18px; padding: 0 14px 50px; }
-  .sidebar { position: static; padding: 12px; }
-  .side-user { display: none; }
-  .side-nav { flex-direction: row; overflow-x: auto; gap: 6px; padding-bottom: 4px; }
-  .side-link { white-space: nowrap; width: auto; padding: 8px 12px; }
+  .app-shell { grid-template-columns: 1fr; gap: 14px; margin-top: 14px; padding: 0 12px 44px; }
+  /* Tanpa ini, grid item bisa melebar mengikuti isi tabel dan membuat
+     seluruh halaman bisa digeser ke samping. */
+  .app-shell > main { min-width: 0; }
+
+  /* Sidebar jadi satu baris menu yang bisa digeser, tanpa judul seksi -
+     di layar sempit judul seksi memakan tiga baris tinggi tanpa memberi info. */
+  .sidebar {
+    display: flex; align-items: center; gap: 6px; padding: 8px;
+    overflow-x: auto; border-radius: 14px; -webkit-overflow-scrolling: touch;
+  }
+  .sidebar::-webkit-scrollbar { display: none; }
+  .sidebar h3, .side-user { display: none; }
+  .side-nav { flex-direction: row; gap: 5px; flex-shrink: 0; }
+  .side-nav + .side-nav { border-left: 1px solid var(--border); padding-left: 6px; }
+  .side-link { white-space: nowrap; width: auto; padding: 8px 12px; font-size: 12.5px; gap: 7px; }
   .side-link.active::before { display: none; }
-  .sidebar h3 { margin: 12px 6px 6px; }
+  .side-link .side-ico { width: 15px; height: 15px; }
+  .side-count { font-size: 10px; padding: 1px 6px; min-width: 20px; }
+
+  .list-head { margin-bottom: 12px; gap: 10px; }
+  .list-head h2 { font-size: 18px; }
+  .list-head .sub { font-size: 12.5px; }
+
   .mode-tabs { flex-direction: column; }
-  .search-bar { flex-direction: column; }
+  .panel { border-radius: 14px; padding: 0 16px 18px; }
+  .panel-kop { margin: 0 -16px 16px; padding: 13px 16px; }
 }
 
-/* Label teks pada tombol notifikasi disembunyikan di layar sempit -
-   ikon loncengnya sudah cukup jelas dan menghemat ruang header. */
+/* Tombol cari tetap di samping kolom input, tidak menumpuk ke bawah dan
+   melar selebar layar. Di layar sempit tinggal ikonnya saja. */
 @media (max-width: 620px) {
-  .notif-label { display: none; }
-  header { padding: 12px 16px; }
-  header h1 { font-size: 13px; }
+  .search-bar { flex-direction: row; gap: 8px; }
+  #searchBtn { flex-shrink: 0; padding: 11px 14px !important; }
+  #searchBtn .btn-label { display: none; }
+  #searchBtn svg { display: block; }
+}
+@media (min-width: 621px) {
+  #searchBtn svg { display: none; }
+}
+
+/* Tabel dokumen berubah jadi kartu bertumpuk. Tabel empat kolom tidak
+   pernah muat di layar HP - memaksanya muat hanya menghasilkan teks
+   sangat kecil atau halaman yang bisa digeser ke samping. */
+@media (max-width: 760px) {
+  .doc-card { padding: 0; }
+  .doc-card thead { display: none; }
+  .doc-card table, .doc-card tbody, .doc-card tr, .doc-card td { display: block; width: 100%; }
+  .doc-card tr { padding: 15px 16px; border-bottom: 1px solid var(--border); }
+  .doc-card tr:last-child { border-bottom: none; }
+  .doc-card tbody tr:hover { background: transparent; }
+  .doc-card td { border: none; padding: 0; }
+  .doc-card td + td { margin-top: 11px; }
+  .doc-card td[data-label]::before {
+    content: attr(data-label); display: block; font-size: 9.5px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-faint); margin-bottom: 5px;
+  }
+  .doc-title { font-size: 14.5px; }
+  .actions .action { padding: 7px 13px; font-size: 12px; }
+}
+
+/* ---- Header di layar sempit ----
+   Judul dan tombol dibiarkan turun ke baris kedua secara rapi, bukan
+   berdesakan di satu baris sampai terpotong. */
+@media (max-width: 760px) {
+  header {
+    padding: 11px 14px; gap: 9px; flex-wrap: wrap;
+    align-items: center; justify-content: space-between;
+  }
+  header h1 { font-size: 12.5px; line-height: 1.3; }
+  header > div:first-child { gap: 9px; min-width: 0; flex: 1; }
+  header > div:last-child { gap: 7px; flex-wrap: wrap; justify-content: flex-end; }
+  header a, header button { font-size: 11.5px; padding: 6px 12px; }
+  .logo-chip img { width: 20px; height: 20px; }
   .who { display: none; }
+  .notif-label { display: none; }
+  .notif-btn { padding: 6px 11px; }
+  .notif-panel { width: min(340px, calc(100vw - 28px)); right: -4px; }
+}
+@media (max-width: 400px) {
+  header h1 { font-size: 0; }
+  /* Judul panjang diganti singkatan di layar paling sempit supaya
+     tombol-tombol tetap muat satu baris. */
+  header h1::after { content: 'TTD Elektronik'; font-size: 12.5px; font-weight: 700; }
 }

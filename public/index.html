@@ -73,11 +73,34 @@
     padding: 11px 14px; border-radius: 10px; font-size: 13px; margin-bottom: 18px; text-align: left;
   }
 
-  @media (max-width: 860px) {
-    .login-wrap { grid-template-columns: 1fr; }
-    .login-brand { padding: 26px 24px; }
-    .brand-mid, .brand-points { display: none; }
-    .login-side { padding: 40px 24px 60px; align-items: flex-start; }
+  /* Saat menumpuk, panel hijau HANYA setinggi isinya (grid-template-rows: auto 1fr).
+     Sebelumnya ia tetap mengambil separuh layar sementara isinya disembunyikan,
+     sehingga tampil sebagai blok hijau kosong yang besar. */
+  @media (max-width: 1024px) {
+    .login-wrap { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+    .login-brand {
+      padding: 26px 26px 30px; gap: 22px; justify-content: flex-start;
+      border-radius: 0 0 26px 26px;
+    }
+    .brand-mid h2 { font-size: 27px; margin-bottom: 12px; }
+    .brand-mid p { font-size: 13.5px; }
+    .brand-points { flex-direction: row; flex-wrap: wrap; gap: 10px 20px; }
+    .brand-point { font-size: 12px; }
+    .login-side { padding: 34px 24px 56px; align-items: flex-start; }
+    .login-form { max-width: 420px; margin: 0 auto; }
+  }
+  @media (max-width: 620px) {
+    .login-brand { padding: 22px 20px 26px; gap: 18px; border-radius: 0 0 22px 22px; }
+    .brand-mid h2 { font-size: 23px; }
+    .brand-mid p { font-size: 13px; }
+    .brand-name { font-size: 12.5px; }
+    /* Di layar HP hanya satu poin yang dipertahankan - sisanya membuat
+       form login terdorong terlalu jauh ke bawah. */
+    .brand-point:nth-child(n+2) { display: none; }
+    .login-side { padding: 28px 20px 48px; }
+    .login-form h1 { font-size: 22px; }
+    .brand-mark { width: 40px; height: 40px; border-radius: 11px; }
+    .brand-mark img { width: 26px; height: 26px; }
   }
 </style>
 </head>

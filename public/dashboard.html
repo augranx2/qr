@@ -183,7 +183,10 @@
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
           <input type="text" id="searchBox" placeholder="Cari nama atau nomor dokumen...">
         </div>
-        <button type="button" class="primary" id="searchBtn" style="width:auto; margin:0; padding:11px 22px; white-space:nowrap;">Cari</button>
+        <button type="button" class="primary" id="searchBtn" style="width:auto; margin:0; padding:11px 22px; white-space:nowrap; display:flex; align-items:center; gap:7px;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          <span class="btn-label">Cari</span>
+        </button>
       </div>
 
       <div class="panel doc-card">
@@ -613,14 +616,19 @@ function renderDocs() {
     tr.appendChild(nameCell);
 
     const progressCell = document.createElement('td');
+    // data-label dipakai CSS untuk memberi judul kolom saat tabel berubah
+    // jadi kartu bertumpuk di layar HP.
+    progressCell.setAttribute('data-label', 'Progres TTD');
     progressCell.innerHTML = progressCellHtml(doc);
     tr.appendChild(progressCell);
 
     const uploaderCell = document.createElement('td');
+    uploaderCell.setAttribute('data-label', 'Diupload oleh');
     uploaderCell.textContent = doc.uploaded_by_name;
     tr.appendChild(uploaderCell);
 
     const actionCell = document.createElement('td');
+    actionCell.setAttribute('data-label', 'Aksi');
     actionCell.innerHTML = actionCellHtml(doc);
     tr.appendChild(actionCell);
 
