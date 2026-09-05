@@ -40,7 +40,6 @@
         <div id="notifList"><div class="notif-empty">Memuat...</div></div>
       </div>
     </div>
-    <a href="/change-password.html">Ganti Password</a>
     <span class="who" id="whoami"></span>
     <button onclick="logout()">Keluar</button>
   </div>
@@ -48,13 +47,14 @@
 
 <div class="app-shell">
   <aside class="sidebar">
-    <div class="side-user">
+    <button class="side-user" id="sideUserBtn" onclick="openProfile()" title="Lihat profil">
       <div class="side-avatar" id="sideAvatar">--</div>
-      <div>
+      <div class="side-user-text">
         <div class="side-user-name" id="sideName">&nbsp;</div>
         <div class="side-user-dept" id="sideDept">&nbsp;</div>
       </div>
-    </div>
+      <svg class="side-user-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg>
+    </button>
 
     <h3>Dokumen</h3>
     <nav class="side-nav">
@@ -171,22 +171,22 @@
 
     <!-- ---------- VIEW: DAFTAR DOKUMEN ---------- -->
     <div id="view-list">
-      <div class="list-head">
-        <div>
+      <div class="panel doc-panel">
+        <div class="panel-kop">
           <h2 id="listTitle">Dokumen</h2>
-          <p class="sub" id="listDesc"></p>
+          <span class="kop-badge" id="listCount">0 dokumen</span>
         </div>
-        <span class="count-pill" id="listCount">0 dokumen</span>
-      </div>
-      <div class="search-bar">
-        <div class="search-field">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-          <input type="text" id="searchBox" placeholder="Cari nama atau nomor dokumen...">
+        <p class="sub" id="listDesc"></p>
+        <div class="search-bar">
+          <div class="search-field">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            <input type="text" id="searchBox" placeholder="Cari nama atau nomor dokumen...">
+          </div>
+          <button type="button" class="primary" id="searchBtn" style="width:auto; margin:0; padding:11px 20px; white-space:nowrap; display:flex; align-items:center; gap:7px;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            <span class="btn-label">Cari</span>
+          </button>
         </div>
-        <button type="button" class="primary" id="searchBtn" style="width:auto; margin:0; padding:11px 22px; white-space:nowrap; display:flex; align-items:center; gap:7px;">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-          <span class="btn-label">Cari</span>
-        </button>
       </div>
 
       <div class="panel doc-card">
@@ -200,6 +200,46 @@
       </div>
     </div>
   </main>
+</div>
+
+<!-- Modal profil personil -->
+<div class="modal-backdrop" id="profileModal" onclick="if(event.target===this) closeProfile()">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-avatar" id="profAvatar">--</div>
+      <div>
+        <div class="modal-title" id="profName">&nbsp;</div>
+        <div class="modal-sub" id="profJabatan">&nbsp;</div>
+      </div>
+      <button class="modal-x" onclick="closeProfile()" title="Tutup">&times;</button>
+    </div>
+    <dl class="prof-list">
+      <div><dt>Username</dt><dd id="profUsername">&mdash;</dd></div>
+      <div><dt>Departemen</dt><dd id="profDept">&mdash;</dd></div>
+      <div><dt>Hak Akses</dt><dd id="profRole">&mdash;</dd></div>
+      <div><dt>Perlu TTD Anda</dt><dd id="profInbox">&mdash;</dd></div>
+    </dl>
+    <div class="modal-actions">
+      <a class="secondary" href="/change-password.html">Ganti Password</a>
+      <button class="danger" onclick="logout()">Keluar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Popup konfirmasi upload selesai -->
+<div class="modal-backdrop" id="doneModal" onclick="if(event.target===this) closeDone()">
+  <div class="modal modal-done">
+    <div class="done-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"></path></svg>
+    </div>
+    <h3>Upload Berhasil</h3>
+    <p id="doneText">Dokumen sudah tersimpan.</p>
+    <div class="done-meta" id="doneMeta"></div>
+    <div class="modal-actions center">
+      <button class="secondary" onclick="closeDone()">Upload Lagi</button>
+      <button class="primary" style="width:auto;" onclick="closeDone(); setView('pending');">Lihat Daftar Dokumen</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -229,7 +269,10 @@ async function checkAuth() {
   document.getElementById('sideName').textContent = data.user.full_name;
   document.getElementById('sideDept').textContent = data.user.department || 'Tanpa departemen';
   if (data.user.role === 'admin') document.getElementById('adminLink').style.display = 'flex';
-  const canViewAudit = data.user.role === 'admin' || (data.user.jabatan && /manager/i.test(data.user.jabatan));
+  // Harus sama dengan canViewAuditTrail() di app.js: admin, manager, dan QA
+  const canViewAudit = data.user.role === 'admin'
+    || (data.user.jabatan && /manager/i.test(data.user.jabatan))
+    || (data.user.department && /\bQA\b|quality assurance/i.test(data.user.department));
   if (canViewAudit) document.getElementById('auditLink').style.display = 'flex';
   loadDocs();
   loadNotifications();
@@ -244,6 +287,36 @@ function showMsg(el, text, type) {
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
+
+// ---------- MODAL: PROFIL & UPLOAD SELESAI ----------
+function openProfile() {
+  if (!currentUser) return;
+  const initials = currentUser.full_name.trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+  document.getElementById('profAvatar').textContent = initials || '?';
+  document.getElementById('profName').textContent = currentUser.full_name;
+  document.getElementById('profJabatan').textContent = currentUser.jabatan || 'Personil';
+  document.getElementById('profUsername').textContent = currentUser.username;
+  document.getElementById('profDept').textContent = currentUser.department || 'Tanpa departemen';
+  document.getElementById('profRole').textContent = currentUser.role === 'admin' ? 'Administrator' : 'Personil';
+  const inbox = bucketize().inbox.length;
+  document.getElementById('profInbox').textContent = inbox === 0 ? 'Tidak ada' : `${inbox} dokumen`;
+  document.getElementById('profileModal').classList.add('open');
+}
+function closeProfile() { document.getElementById('profileModal').classList.remove('open'); }
+
+function showDone(docName, docNumber, targetCount) {
+  document.getElementById('doneText').textContent = targetCount > 0
+    ? `Notifikasi sudah dikirim ke ${targetCount} orang yang diminta menandatangani.`
+    : 'Dokumen sudah tersimpan dan siap ditandatangani.';
+  document.getElementById('doneMeta').textContent = `${docNumber} — ${docName}`;
+  document.getElementById('doneModal').classList.add('open');
+}
+function closeDone() { document.getElementById('doneModal').classList.remove('open'); }
+
+// Esc menutup modal mana pun yang sedang terbuka
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { closeProfile(); closeDone(); }
+});
 
 // ---------- NAVIGASI SIDEBAR ----------
 function setView(view) {
@@ -440,9 +513,11 @@ document.getElementById('uploadForm').addEventListener('submit', async (e) => {
     return;
   }
 
+  const docName = document.getElementById('doc_name').value;
+  const docNumber = document.getElementById('doc_number').value;
   const fd = new FormData();
-  fd.append('doc_name', document.getElementById('doc_name').value);
-  fd.append('doc_number', document.getElementById('doc_number').value);
+  fd.append('doc_name', docName);
+  fd.append('doc_number', docNumber);
   fd.append('department', document.getElementById('department').value);
   fd.append('allowed_departments', JSON.stringify(allowedDepartments));
   fd.append('allowed_users', JSON.stringify(allowedUsers));
@@ -461,7 +536,11 @@ document.getElementById('uploadForm').addEventListener('submit', async (e) => {
       progressPercent.textContent = percent + '%';
       if (percent >= 100) progressStatus.textContent = 'Memproses di server...';
     });
-    showMsg(msgEl, 'Dokumen berhasil diupload dan notifikasi sudah dikirim ke pihak yang harus TTD.', 'success');
+    // Perkiraan jumlah penerima notifikasi, hanya untuk ditampilkan di popup
+    const deptTargets = directoryCache.filter(u => allowedDepartments.includes(u.department)).map(u => u.id);
+    const notified = new Set([...deptTargets, ...allowedUsers]);
+    notified.delete(currentUser && currentUser.id);
+    showDone(docName, docNumber, notified.size);
     document.getElementById('uploadForm').reset();
     selectedUserIds.clear();
     loadDepartments();

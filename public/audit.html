@@ -14,12 +14,18 @@
     <div class="logo-chip"><img src="/logo-rama.png" alt="Logo PT REMS"></div>
     <h1>Audit Trail — PT REMS</h1>
   </div>
-  <a href="/dashboard.html">&larr; Kembali ke Dashboard</a>
+  <div style="display:flex; align-items:center; gap:8px;">
+    <a href="#" id="downloadBtn" onclick="downloadCsv(); return false;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path><path d="M12 15V3"></path></svg>
+      Unduh CSV
+    </a>
+    <a href="/dashboard.html">&larr; Kembali ke Dashboard</a>
+  </div>
 </header>
 <main>
   <div class="panel">
     <div class="panel-kop"><h2>Riwayat Aktivitas</h2><span class="kop-badge" id="logCount">0 aktivitas</span></div>
-    <p class="sub">Login, logout, upload dokumen, dan tanda tangan — 500 aktivitas terakhir, terbaru di atas.</p>
+    <p class="sub">Login, logout, upload dokumen, dan tanda tangan — 500 aktivitas terakhir, terbaru di atas. Bisa diunduh sebagai CSV untuk kebutuhan audit.</p>
     <table>
       <thead><tr><th>Waktu</th><th>Aksi</th><th>Oleh</th><th>Detail</th></tr></thead>
       <tbody id="logList"></tbody>
@@ -38,6 +44,12 @@ const LABELS = {
   unarchive_document: ['Kembalikan dari Arsip', 'upload_document'],
   delete_document: ['Hapus Dokumen', 'logout']
 };
+
+function downloadCsv() {
+  // Diarahkan langsung ke endpoint-nya; server yang menyusun CSV dan mengirim
+  // header attachment, jadi browser otomatis mengunduh tanpa membuka tab baru.
+  window.location.href = '/api/audit-log/export';
+}
 
 async function checkAuth() {
   const res = await fetch('/api/me');

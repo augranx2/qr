@@ -1,0 +1,5 @@
+# Halaman di public/ berisi JavaScript inline dalam file .html, sehingga GitHub
+# menghitungnya sebagai "HTML" dan menandai repo ini HTML. Baris di bawah membuat
+# file tersebut tidak ikut dihitung dalam statistik bahasa, tanpa mengubah isi
+# atau cara aplikasi berjalan.
+public/*.html linguist-detectable=false

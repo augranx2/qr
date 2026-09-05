@@ -245,15 +245,17 @@ function canDeleteDocument(user, doc) {
   return doc.uploaded_by === user.id;
 }
 
-// Audit trail is restricted to admins and anyone whose jabatan indicates a
-// managerial role (Manager / Assistant Manager, in any casing/wording).
+// Audit trail terbuka untuk: admin, siapa pun yang jabatannya mengandung "manager",
+// dan seluruh personil Quality Assurance - QA memang bertugas menelusuri riwayat
+// dokumen, jadi mereka perlu bisa melihat sekaligus mengunduhnya.
 function canViewAuditTrail(user) {
   if (user.role === 'admin') return true;
-  return !!(user.jabatan && /manager/i.test(user.jabatan));
+  if (user.jabatan && /manager/i.test(user.jabatan)) return true;
+  return !!(user.department && /\bQA\b|quality assurance/i.test(user.department));
 }
 
 function requireAuditAccess(req, res, next) {
-  if (!canViewAuditTrail(req.user)) return res.status(403).json({ error: 'Hanya admin/manager yang bisa melihat audit trail' });
+  if (!canViewAuditTrail(req.user)) return res.status(403).json({ error: 'Hanya admin, manager, dan QA yang bisa melihat audit trail' });
   next();
 }
 
@@ -856,10 +858,40 @@ app.delete('/api/documents/:id', requireLogin, async (req, res) => {
   res.json({ ok: true });
 });
 
-// ---------- AUDIT TRAIL (admin / manager / assistant manager only) ----------
+// ---------- AUDIT TRAIL (admin / manager / QA) ----------
 app.get('/api/audit-log', requireLogin, requireAuditAccess, async (req, res) => {
   const entries = await db.listAuditLog(500);
   res.json({ entries });
+});
+
+// Unduh audit trail sebagai CSV. Dibuat di server (bukan di browser) supaya seluruh
+// data ikut terunduh, bukan hanya yang kebetulan sedang tampil di layar.
+app.get('/api/audit-log/export', requireLogin, requireAuditAccess, async (req, res) => {
+  const entries = await db.listAuditLog(500);
+  const LABELS = {
+    login: 'Login', logout: 'Logout', upload_document: 'Upload Dokumen',
+    sign_document: 'Tanda Tangan', change_password: 'Ganti Password',
+    archive_document: 'Arsipkan Dokumen', unarchive_document: 'Kembalikan dari Arsip',
+    delete_document: 'Hapus Dokumen'
+  };
+  // Bungkus tiap sel dengan tanda kutip dan gandakan kutip di dalamnya - nama dokumen
+  // sering mengandung koma, yang tanpa ini akan menggeser kolom di Excel.
+  const cell = v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
+  const rows = [['Waktu (WIB)', 'Aktivitas', 'Username', 'Nama Lengkap', 'Departemen', 'No. Dokumen', 'Nama Dokumen']];
+  for (const e of entries) {
+    rows.push([
+      formatStampDateTime(e.timestamp).replace(' WIB', ''),
+      LABELS[e.type] || e.type,
+      e.username || '', e.full_name || '', e.department || '',
+      e.doc_number || '', e.doc_name || ''
+    ]);
+  }
+  const csv = rows.map(r => r.map(cell).join(',')).join('\r\n');
+  const stamp = new Date().toISOString().slice(0, 10);
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="audit-trail-${stamp}.csv"`);
+  // BOM UTF-8 supaya Excel di Windows membaca huruf beraksen dengan benar.
+  res.send('\uFEFF' + csv);
 });
 
 // ---------- PUBLIC VERIFICATION PAGE (data endpoint) ----------
