@@ -1,6 +1,8 @@
 /* ============================================================
    TTD Elektronik QR — PT REMS — Shared Design System
-   Typeface: Space Grotesk (display) + IBM Plex Sans (body) + IBM Plex Mono (codes/data)
+   Typeface: Plus Jakarta Sans (display + body) + JetBrains Mono (codes/data).
+   Satu keluarga huruf untuk judul dan teks membuat halaman terlihat lebih tenang
+   dan modern daripada mencampur dua tipografi berbeda.
    Palette grounded in pharma QA: clinical teal for trust/quality,
    warm paper background (cool-toned, not the generic cream), amber/green/red
    as functional status colors matching the document lifecycle.
@@ -37,9 +39,9 @@
   --shadow-sm: 0 1px 2px rgba(19, 35, 31, 0.06), 0 1px 1px rgba(19, 35, 31, 0.04);
   --shadow-md: 0 8px 28px rgba(19, 35, 31, 0.10);
 
-  --font-display: 'Space Grotesk', -apple-system, Segoe UI, sans-serif;
-  --font-body: 'IBM Plex Sans', -apple-system, Segoe UI, sans-serif;
-  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --font-display: 'Plus Jakarta Sans', -apple-system, 'Segoe UI', sans-serif;
+  --font-body: 'Plus Jakarta Sans', -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
 
   --ease: cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -54,14 +56,16 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-h1, h2, .font-display { font-family: var(--font-display); letter-spacing: -0.01em; }
+h1, h2, .font-display { font-family: var(--font-display); letter-spacing: -0.02em; font-weight: 700; }
+body { letter-spacing: -0.005em; }
 
 /* ---------------- Topbar ---------------- */
 header {
   background: var(--ink);
-  background-image: linear-gradient(135deg, #0F2620 0%, #13231F 60%);
+  background-image: linear-gradient(120deg, #10281F 0%, #13231F 55%, #0F2620 100%);
   color: white;
-  padding: 14px 28px;
+  padding: 13px 30px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -71,16 +75,17 @@ header {
   box-shadow: var(--shadow-md);
 }
 header h1 {
-  font-size: 16px;
+  font-size: 15px;
   margin: 0;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 header a {
   color: #D9EFE7;
   text-decoration: none;
   font-size: 12.5px;
   font-weight: 600;
-  padding: 7px 14px;
+  padding: 7px 15px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.07);
   border: 1px solid rgba(255, 255, 255, 0.09);
@@ -104,18 +109,20 @@ header nav, .header-nav {
 }
 
 header button {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.09);
   color: white;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  padding: 8px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  padding: 8px 17px;
   border-radius: 999px;
+  font-size: 12.5px;
 }
-header button:hover { background: rgba(255, 255, 255, 0.2); }
+header button:hover { background: rgba(255, 255, 255, 0.19); border-color: rgba(255, 255, 255, 0.28); }
+.who { font-size: 12.5px; color: rgba(255, 255, 255, 0.62); padding: 0 4px; }
 
 .logo-chip {
   background: white;
-  border-radius: var(--radius-sm);
-  padding: 4px;
+  border-radius: 10px;
+  padding: 5px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -128,11 +135,11 @@ main { max-width: 960px; margin: 32px auto; padding: 0 20px 60px; }
 
 .panel {
   background: var(--card);
-  border-radius: var(--radius);
+  border-radius: 16px;
   padding: 0 24px 24px;
   margin-bottom: 24px;
   border: 1px solid var(--border);
-  box-shadow: var(--shadow-sm);
+  box-shadow: 0 1px 2px rgba(19, 35, 31, 0.04), 0 12px 28px -20px rgba(19, 35, 31, 0.3);
   transition: box-shadow 0.2s var(--ease);
   overflow: hidden;
 }
@@ -218,9 +225,9 @@ label {
 
 input, select {
   width: 100%;
-  padding: 10px 12px;
+  padding: 11px 13px;
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
+  border-radius: 10px;
   font-size: 13.5px;
   font-family: var(--font-body);
   background: var(--card);
@@ -243,7 +250,7 @@ button, .primary, .secondary, .danger {
   font-family: var(--font-body);
   font-weight: 600;
   font-size: 13px;
-  border-radius: var(--radius-sm);
+  border-radius: 10px;
   cursor: pointer;
   transition: transform 0.12s var(--ease), box-shadow 0.15s var(--ease), background 0.15s var(--ease), border-color 0.15s var(--ease);
   border: 1px solid transparent;
@@ -281,13 +288,15 @@ button:hover { background: var(--brand-dark); }
 
 /* ---------------- Tables ---------------- */
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
-th, td { text-align: left; padding: 11px 10px; border-bottom: 1px solid var(--border); }
+th, td { text-align: left; padding: 13px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
 th {
   color: var(--ink-faint);
-  font-weight: 600;
-  font-size: 11px;
+  font-weight: 700;
+  font-size: 10.5px;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.07em;
+  padding-top: 12px;
+  padding-bottom: 12px;
 }
 tbody tr { transition: background 0.12s var(--ease); }
 tbody tr:hover { background: var(--paper); }
@@ -298,7 +307,7 @@ td:nth-child(2), .folder-id, .doc-info b + text { font-family: var(--font-mono);
 
 /* ---------------- Badges (status pills) ---------------- */
 .badge {
-  padding: 3px 10px;
+  padding: 4px 11px;
   border-radius: 999px;
   font-size: 11px;
   font-weight: 700;
@@ -330,6 +339,26 @@ td:nth-child(2), .folder-id, .doc-info b + text { font-family: var(--font-mono);
 .error { text-align: center; padding: 40px 0; font-size: 14px; border: none; background: none; }
 
 /* ---------------- Links styled as actions ---------------- */
+/* Setiap aksi berdiri sendiri sebagai chip bergaris, bukan deretan link yang
+   berdempetan - masing-masing punya area klik dan warna sesuai risikonya. */
+.actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.actions .action {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 11px; border-radius: 999px; font-size: 11.5px; font-weight: 600;
+  border: 1px solid var(--border-strong); background: var(--card); color: var(--ink-soft);
+  text-decoration: none; white-space: nowrap; cursor: pointer; line-height: 1.6;
+  transition: all 0.14s var(--ease);
+}
+.actions .action:hover { text-decoration: none; transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+.actions .action svg { width: 12px; height: 12px; flex-shrink: 0; }
+.actions .action.sign { border-color: var(--brand); background: var(--brand); color: #fff; }
+.actions .action.sign:hover { background: var(--brand-dark); border-color: var(--brand-dark); }
+.actions .action.view:hover { border-color: var(--slate); color: var(--slate); }
+.actions .action.archive:hover { border-color: var(--amber); color: var(--amber); background: var(--amber-soft); }
+.actions .action.delete { color: var(--red); border-color: #EEC9C5; }
+.actions .action.delete:hover { background: var(--red-soft); border-color: var(--red); }
+.actions .action-none { color: var(--ink-faint); font-size: 12px; }
+
 a.action {
   color: var(--brand);
   text-decoration: none;
@@ -593,4 +622,13 @@ a.action:hover { color: var(--brand-dark); text-decoration: underline; }
   .sidebar h3 { margin: 12px 6px 6px; }
   .mode-tabs { flex-direction: column; }
   .search-bar { flex-direction: column; }
+}
+
+/* Label teks pada tombol notifikasi disembunyikan di layar sempit -
+   ikon loncengnya sudah cukup jelas dan menghemat ruang header. */
+@media (max-width: 620px) {
+  .notif-label { display: none; }
+  header { padding: 12px 16px; }
+  header h1 { font-size: 13px; }
+  .who { display: none; }
 }

@@ -5,7 +5,7 @@
 <title>Dashboard - TTD QR Code</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/styles.css">
 <style>
   #allowedDeptCheckboxes {
@@ -29,7 +29,7 @@
     <div class="notif-wrap">
       <button class="notif-btn" id="notifBtn" title="Notifikasi">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
-        Notifikasi
+        <span class="notif-label">Notifikasi</span>
         <span class="notif-dot" id="notifDot">0</span>
       </button>
       <div class="notif-panel" id="notifPanel">
@@ -561,21 +561,34 @@ function progressCellHtml(doc) {
   return parts.join('');
 }
 
+const ICO = {
+  sign: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>',
+  view: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 12S5 5.5 12 5.5 22.5 12 22.5 12 19 18.5 12 18.5 1.5 12 1.5 12Z"></path><circle cx="12" cy="12" r="3"></circle></svg>',
+  archive: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1"></rect><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8"></path><path d="M10 12h4"></path></svg>',
+  restore: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"></path><path d="M3 4v5h5"></path></svg>',
+  del: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"></path><path d="M9 7V5h6v2"></path><path d="M6 7l1 13h10l1-13"></path></svg>'
+};
+
+// Tiap aksi dirender sebagai chip terpisah dengan ikon dan warna sesuai risikonya:
+// hijau solid untuk aksi utama (TTD), netral untuk lihat, kuning untuk arsip,
+// merah untuk hapus. Jauh lebih terbaca daripada deretan link yang berdempetan.
 function actionCellHtml(doc) {
   const links = [];
   if (!doc.archived && canSign(doc)) {
-    links.push(`<a class="action" href="/sign.html?id=${doc.id}">${doc.signature_count > 0 ? '+ Tambah TTD' : 'Tandatangani'}</a>`);
+    links.push(`<a class="action sign" href="/sign.html?id=${doc.id}">${ICO.sign}${doc.signature_count > 0 ? 'Tambah TTD' : 'Tandatangani'}</a>`);
   }
   if (doc.signature_count > 0) {
-    links.push(`<a class="action" href="#" onclick="viewSigned('${doc.id}'); return false;">Lihat</a>`);
+    links.push(`<a class="action view" href="#" onclick="viewSigned('${doc.id}'); return false;">${ICO.view}Lihat</a>`);
   }
   if (doc.archived) {
-    if (canManage(doc)) links.push(`<a class="action" href="#" onclick="archiveDoc('${doc.id}', false); return false;">Kembalikan</a>`);
+    if (canManage(doc)) links.push(`<a class="action archive" href="#" onclick="archiveDoc('${doc.id}', false); return false;">${ICO.restore}Kembalikan</a>`);
   } else if (canManage(doc)) {
-    links.push(`<a class="action" href="#" onclick="archiveDoc('${doc.id}', true); return false;" style="color:var(--amber);">Arsipkan</a>`);
+    links.push(`<a class="action archive" href="#" onclick="archiveDoc('${doc.id}', true); return false;">${ICO.archive}Arsipkan</a>`);
   }
-  if (canDelete(doc)) links.push(`<a class="action" href="#" onclick="deleteDoc('${doc.id}'); return false;" style="color:var(--red);">Hapus</a>`);
-  return links.length ? links.join(' ') : '<span style="color:var(--ink-faint);">&mdash;</span>';
+  if (canDelete(doc)) links.push(`<a class="action delete" href="#" onclick="deleteDoc('${doc.id}'); return false;">${ICO.del}Hapus</a>`);
+  return links.length
+    ? `<div class="actions">${links.join('')}</div>`
+    : '<span class="action-none">&mdash;</span>';
 }
 
 function renderDocs() {

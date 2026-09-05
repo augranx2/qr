@@ -5,45 +5,133 @@
 <title>Login - TTD QR Code</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/styles.css">
 <style>
+  /* Login dua sisi: panel identitas gelap di kiri, form terang di kanan.
+     Di layar kecil panel kiri disederhanakan jadi kop tipis agar form tetap
+     mendapat ruang penuh. */
   body {
-    height: 100vh; display: flex; align-items: center; justify-content: center;
-    background: radial-gradient(circle at 20% 15%, #16332B 0%, #0F2620 45%, #0B1D18 100%);
-    background-attachment: fixed;
+    min-height: 100vh; margin: 0; display: flex;
+    background: var(--paper);
   }
-  .login-card { padding: 44px 40px; width: 380px; }
-  .login-logo {
+  .login-wrap {
+    display: grid; grid-template-columns: 1.05fr 1fr;
+    width: 100%; min-height: 100vh;
+  }
+  .login-brand {
+    position: relative; overflow: hidden; color: #fff;
+    background: radial-gradient(circle at 18% 12%, #16332B 0%, #0F2620 48%, #0A1A16 100%);
+    padding: 56px 60px; display: flex; flex-direction: column; justify-content: space-between;
+  }
+  /* Grid halus di latar - memberi kesan "dokumen terkontrol" tanpa gambar tambahan */
+  .login-brand::after {
+    content: ''; position: absolute; inset: 0; opacity: 0.5; pointer-events: none;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px);
+    background-size: 46px 46px;
+    mask-image: radial-gradient(circle at 30% 30%, #000 0%, transparent 78%);
+    -webkit-mask-image: radial-gradient(circle at 30% 30%, #000 0%, transparent 78%);
+  }
+  .brand-top { position: relative; z-index: 1; display: flex; align-items: center; gap: 13px; }
+  .brand-mark {
+    width: 46px; height: 46px; border-radius: 13px; background: #fff;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    box-shadow: 0 8px 24px -8px rgba(0,0,0,0.6);
+  }
+  .brand-mark img { width: 30px; height: 30px; object-fit: contain; }
+  .brand-name { font-size: 13.5px; font-weight: 700; letter-spacing: -0.01em; }
+  .brand-unit { font-size: 11.5px; color: rgba(255,255,255,0.55); margin-top: 2px; }
+
+  .brand-mid { position: relative; z-index: 1; max-width: 430px; }
+  .brand-mid h2 {
+    font-size: 38px; line-height: 1.12; margin: 0 0 18px; color: #fff;
+    letter-spacing: -0.035em; font-weight: 800;
+  }
+  .brand-mid h2 em { font-style: normal; color: #6FD3B6; }
+  .brand-mid p { font-size: 14.5px; line-height: 1.65; color: rgba(255,255,255,0.62); margin: 0; }
+
+  .brand-points { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 13px; }
+  .brand-point { display: flex; align-items: flex-start; gap: 11px; font-size: 13px; color: rgba(255,255,255,0.7); }
+  .brand-point svg { flex-shrink: 0; margin-top: 1px; color: #6FD3B6; }
+
+  .login-side {
     display: flex; align-items: center; justify-content: center;
-    width: 68px; height: 68px; margin: 0 auto 20px;
-    background: white; border-radius: 16px; box-shadow: var(--shadow-md);
+    padding: 40px 32px; background: var(--card);
   }
-  .login-logo img { width: 44px; height: 44px; object-fit: contain; }
-  h1.login-title { font-size: 21px; margin: 0 0 6px; text-align: center; }
-  p.login-sub { color: var(--ink-soft); font-size: 13px; margin: 0 0 28px; text-align: center; line-height: 1.6; }
-  p.login-sub b { color: var(--ink); }
-  #loginForm label { margin-top: 14px; }
-  #loginForm label:first-of-type { margin-top: 0; }
+  .login-form { width: 100%; max-width: 352px; }
+  .login-form h1 { font-size: 25px; margin: 0 0 7px; letter-spacing: -0.03em; }
+  .login-form .lead { font-size: 13.5px; color: var(--ink-soft); margin: 0 0 30px; line-height: 1.6; }
+  .field { margin-bottom: 16px; }
+  .field label { font-size: 12px; margin-bottom: 7px; }
+  .field input { padding: 12px 14px; border-radius: 11px; font-size: 14px; }
+  .login-form .primary { padding: 13px 18px; border-radius: 11px; font-size: 14px; margin-top: 10px; }
+  .login-foot { margin-top: 26px; font-size: 11.5px; color: var(--ink-faint); line-height: 1.6; text-align: center; }
   .error {
     display: none; background: var(--red-soft); color: var(--red); border: 1px solid #F0C9C5;
-    padding: 10px 14px; border-radius: var(--radius-sm); font-size: 13px; margin-bottom: 16px; text-align: left;
+    padding: 11px 14px; border-radius: 10px; font-size: 13px; margin-bottom: 18px; text-align: left;
+  }
+
+  @media (max-width: 860px) {
+    .login-wrap { grid-template-columns: 1fr; }
+    .login-brand { padding: 26px 24px; }
+    .brand-mid, .brand-points { display: none; }
+    .login-side { padding: 40px 24px 60px; align-items: flex-start; }
   }
 </style>
 </head>
 <body>
-  <div class="card login-card">
-    <div class="login-logo"><img src="/logo-rama.png" alt="Logo PT. Rama Emerald Multi Sukses"></div>
-    <h1 class="login-title">Tanda Tangan Elektronik QR</h1>
-    <p class="login-sub"><b>PT. Rama Emerald Multi Sukses</b><br>Login menggunakan username personil Anda</p>
-    <div class="error" id="err"></div>
-    <form id="loginForm">
-      <label>Username</label>
-      <input type="text" id="username" required autocomplete="username">
-      <label>Password</label>
-      <input type="password" id="password" required autocomplete="current-password">
-      <button type="submit" class="primary" style="margin-top:20px;">Masuk</button>
-    </form>
+  <div class="login-wrap">
+    <section class="login-brand">
+      <div class="brand-top">
+        <div class="brand-mark"><img src="/logo-rama.png" alt="Logo PT. Rama Emerald Multi Sukses"></div>
+        <div>
+          <div class="brand-name">PT. Rama Emerald Multi Sukses</div>
+          <div class="brand-unit">Sistem Tanda Tangan Elektronik</div>
+        </div>
+      </div>
+
+      <div class="brand-mid">
+        <h2>Tanda tangan dokumen,<br><em>tanpa cetak dan scan.</em></h2>
+        <p>Setiap tanda tangan menghasilkan QR unik yang bisa diverifikasi siapa pun, kapan pun, langsung dari dokumen cetaknya.</p>
+      </div>
+
+      <div class="brand-points">
+        <div class="brand-point">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7.5 3v6c0 4.5-3.1 8.2-7.5 9.4C7.6 20.2 4.5 16.5 4.5 12V6Z"></path><path d="m9 12 2 2 4-4"></path></svg>
+          Setiap TTD tercatat lengkap dengan nama, tanggal, dan jam
+        </div>
+        <div class="brand-point">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path><path d="M12 15V3"></path></svg>
+          Dokumen tersimpan otomatis ke Google Drive per departemen
+        </div>
+        <div class="brand-point">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+          Riwayat dan audit trail tersimpan permanen
+        </div>
+      </div>
+    </section>
+
+    <section class="login-side">
+      <div class="login-form">
+        <h1>Masuk</h1>
+        <p class="lead">Gunakan username personil yang diberikan admin.</p>
+        <div class="error" id="err"></div>
+        <form id="loginForm">
+          <div class="field">
+            <label>Username</label>
+            <input type="text" id="username" required autocomplete="username" placeholder="username personil">
+          </div>
+          <div class="field">
+            <label>Password</label>
+            <input type="password" id="password" required autocomplete="current-password" placeholder="••••••••">
+          </div>
+          <button type="submit" class="primary">Masuk</button>
+        </form>
+        <p class="login-foot">Lupa password? Hubungi admin sistem untuk direset.</p>
+      </div>
+    </section>
   </div>
 <script>
 document.getElementById('loginForm').addEventListener('submit', async (e) => {
