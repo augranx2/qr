@@ -154,19 +154,51 @@ async function loadDoc(isInitial) {
   const missing = req.filter(d => !signed.includes(d));
   let ttdInfo = '';
   if (doc.signature_count > 0) {
+    // Dokumen yang penandatangannya di-tag per orang tidak punya "x/y departemen" -
+    // tampilkan hitungan orang untuk kasus itu supaya tidak muncul "0/0 departemen".
+    const usesDepartments = req.length > 0;
+    const reqU = doc.required_users || [];
+    const signedU = doc.signed_users || [];
+    const counter = usesDepartments
+      ? `${signed.filter(d => req.includes(d)).length}/${req.length} departemen`
+      : `${signedU.filter(u => reqU.includes(u)).length}/${reqU.length} personil`;
     const statusLabel = doc.completion_status === 'complete'
-      ? `<span style="color:var(--green); font-weight:600;">Lengkap (${signed.length}/${req.length} departemen)</span>`
-      : `<span style="color:var(--amber); font-weight:600;">Sebagian (${signed.length}/${req.length} departemen)</span>`;
+      ? `<span style="color:var(--green); font-weight:600;">Lengkap (${counter})</span>`
+      : `<span style="color:var(--amber); font-weight:600;">Sebagian (${counter})</span>`;
     const missingLine = missing.length > 0 ? ` &mdash; menunggu: ${missing.join(', ')}` : '';
     ttdInfo = `<div><b>Status TTD:</b> ${statusLabel}${missingLine}</div>
                <div><b>TTD Sebelumnya:</b> ${doc.signature_count} tanda tangan &mdash; QR baru akan ditambahkan di atasnya</div>`;
   }
+  // Daftar orang yang di-tag khusus untuk dokumen ini (kalau ada), lengkap dengan
+  // penanda siapa yang sudah TTD - supaya jelas apakah giliran kita atau bukan.
+  const reqUsers = doc.required_users || [];
+  const signedUsers = doc.signed_users || [];
+  let taggedLine = '';
+  if (reqUsers.length > 0) {
+    const names = (doc.required_user_names && doc.required_user_names.length)
+      ? doc.required_user_names
+      : reqUsers.map(id => ({ id, full_name: `User #${id}`, signed: signedUsers.includes(id) }));
+    taggedLine = `<div><b>Personil yang di-tag:</b> ` +
+      names.map(p => `${p.full_name}${p.signed ? ' (sudah TTD)' : ''}`).join(', ') + `</div>`;
+  }
+
   document.getElementById('docInfo').innerHTML =
     `<div><b>Nama Dokumen:</b> ${doc.doc_name}</div>
      <div><b>No. Dokumen:</b> ${doc.doc_number}</div>
      <div><b>Departemen:</b> ${doc.department}</div>
-     <div><b>Wajib TTD dari:</b> ${req.join(', ')}</div>
+     ${req.length ? `<div><b>Wajib TTD dari:</b> ${req.join(', ')}</div>` : ''}
+     ${taggedLine}
      ${ttdInfo}`;
+
+  // Kalau server bilang kita tidak berhak TTD, matikan tombolnya sekarang juga daripada
+  // membiarkan orang menempel QR lalu ditolak setelah semua pekerjaan itu selesai.
+  if (doc.can_sign === false) {
+    const btn = document.getElementById('signBtn');
+    btn.disabled = true;
+    btn.textContent = reqUsers.length > 0
+      ? 'Hanya personil yang di-tag yang bisa TTD dokumen ini'
+      : 'Departemen Anda tidak diminta TTD dokumen ini';
+  }
 
   // cache-bust so the browser always fetches the latest version (with the QR we just added)
   const freshUrl = doc.current_file_url + (doc.current_file_url.includes('?') ? '&' : '?') + 't=' + Date.now();

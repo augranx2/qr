@@ -194,14 +194,37 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-// A document is visible/accessible to: admins, whoever uploaded it, and anyone whose
-// department is in the document's allowed_departments list (departments not listed
-// simply can't see or act on that document at all).
+// Siapa yang boleh MELIHAT dokumen: admin, pengupload, siapa pun yang departemennya
+// terdaftar di allowed_departments, dan siapa pun yang di-tag langsung (allowed_users).
 function canAccessDocument(user, doc) {
   if (user.role === 'admin') return true;
   if (doc.uploaded_by === user.id) return true;
+  if ((doc.allowed_users || []).includes(user.id)) return true;
   const allowed = doc.allowed_departments || [];
-  return allowed.length === 0 || allowed.includes(user.department);
+  // Kalau dokumen dibatasi ke orang tertentu saja (tanpa departemen), daftar departemen
+  // yang kosong TIDAK boleh diartikan "semua orang boleh" seperti pada dokumen lama.
+  if (allowed.length === 0) return (doc.allowed_users || []).length === 0;
+  return allowed.includes(user.department);
+}
+
+// Siapa yang boleh MENANDATANGANI - sengaja lebih sempit daripada "boleh melihat".
+// Dua mode yang bisa dipakai bersamaan saat upload:
+//   - pilih DEPARTEMEN  -> semua personil departemen itu bisa TTD
+//   - tag ORANG langsung -> hanya orang yang di-tag itu yang bisa TTD
+// Pengupload TIDAK otomatis bisa TTD kalau dia sendiri tidak masuk salah satu daftar;
+// kalau tidak, dokumen yang sengaja di-tag ke satu orang tetap bisa ditandatangani
+// orang lain dan pembatasannya jadi tidak ada artinya.
+function canSignDocument(user, doc) {
+  if (user.role === 'admin') return true;
+  if ((doc.allowed_users || []).includes(user.id)) return true;
+  const allowedDepts = doc.allowed_departments || [];
+  if (allowedDepts.includes(user.department)) return true;
+  // Dokumen lama (sebelum fitur ini ada) yang tidak punya dua daftar itu sama sekali:
+  // jatuhkan ke perilaku lama, yaitu departemen pemilik dokumen.
+  if (allowedDepts.length === 0 && (doc.allowed_users || []).length === 0) {
+    return user.department === doc.department || doc.uploaded_by === user.id;
+  }
+  return false;
 }
 
 // Archiving/deleting is for admins, the person who uploaded it, or anyone from the
@@ -232,6 +255,43 @@ function canViewAuditTrail(user) {
 function requireAuditAccess(req, res, next) {
   if (!canViewAuditTrail(req.user)) return res.status(403).json({ error: 'Hanya admin/manager yang bisa melihat audit trail' });
   next();
+}
+
+// Daftar personil untuk fitur "tag orang" saat upload. Berbeda dari /api/users di atas
+// yang admin-only: ini boleh diakses semua user yang login, tapi hanya mengembalikan
+// data secukupnya untuk memilih nama (tanpa role/hash password).
+app.get('/api/users/directory', requireLogin, async (req, res) => {
+  const users = await db.listUsers();
+  res.json({
+    users: users
+      .map(u => ({ id: u.id, username: u.username, full_name: u.full_name, department: u.department, jabatan: u.jabatan || null }))
+      .sort((a, b) => (a.department || '').localeCompare(b.department || '') || a.full_name.localeCompare(b.full_name))
+  });
+});
+
+// ---------- NOTIFIKASI ----------
+app.get('/api/notifications', requireLogin, async (req, res) => {
+  const items = await db.listNotifications(req.user.id);
+  res.json({ notifications: items, unread: items.filter(n => !n.read).length });
+});
+
+app.post('/api/notifications/read', requireLogin, async (req, res) => {
+  const ids = Array.isArray(req.body.ids) && req.body.ids.length > 0 ? req.body.ids : null;
+  await db.markNotificationsRead(req.user.id, ids);
+  res.json({ ok: true });
+});
+
+// Menerjemahkan "departemen yang boleh TTD" + "orang yang di-tag" menjadi daftar id user
+// yang perlu diberi notifikasi. `excludeUserId` dipakai supaya orang tidak dapat notifikasi
+// dari perbuatannya sendiri.
+async function resolveNotificationTargets({ departments = [], userIds = [], excludeUserId = null }) {
+  const all = await db.listUsers();
+  const ids = new Set(userIds.filter(v => v != null));
+  for (const u of all) {
+    if (departments.includes(u.department)) ids.add(u.id);
+  }
+  if (excludeUserId != null) ids.delete(excludeUserId);
+  return [...ids];
 }
 
 // List personil accounts (admin only)
@@ -344,14 +404,22 @@ app.post('/api/documents', requireLogin, upload.single('file'), async (req, res)
     }
     if (!req.file) return res.status(400).json({ error: 'File wajib diupload' });
 
-    // allowed_departments arrives as a JSON-stringified array (multipart form fields are
-    // always strings). Empty/invalid -> defaults to just the uploading department itself.
+    // allowed_departments & allowed_users datang sebagai string JSON (field multipart
+    // selalu string). Dua-duanya opsional dan boleh dipakai bersamaan:
+    //   - allowed_departments: semua personil departemen tsb bisa lihat + TTD
+    //   - allowed_users: hanya orang-orang itu yang bisa TTD
+    // Kalau dua-duanya kosong, jatuh ke perilaku lama: departemen pemilik dokumen.
     let allowedDepartments = [];
     try {
       const parsed = JSON.parse(req.body.allowed_departments || '[]');
       if (Array.isArray(parsed)) allowedDepartments = parsed.filter(Boolean);
     } catch (e) { /* ignore malformed input, fall back to default below */ }
-    if (allowedDepartments.length === 0) allowedDepartments = [department];
+    let allowedUsers = [];
+    try {
+      const parsed = JSON.parse(req.body.allowed_users || '[]');
+      if (Array.isArray(parsed)) allowedUsers = parsed.map(Number).filter(n => Number.isFinite(n));
+    } catch (e) { /* ignore malformed input */ }
+    if (allowedDepartments.length === 0 && allowedUsers.length === 0) allowedDepartments = [department];
 
     const ext = path.extname(req.file.originalname).toLowerCase();
     const file_type = ext === '.pdf' ? 'pdf' : 'image';
@@ -392,6 +460,7 @@ app.post('/api/documents', requireLogin, upload.single('file'), async (req, res)
       uploaded_by: req.user.id,
       page_width, page_height,
       allowed_departments: allowedDepartments,
+      allowed_users: allowedUsers,
       drive_original_file_id: driveOriginal ? driveOriginal.fileId : null,
       drive_original_view_link: driveOriginal ? driveOriginal.webViewLink : null
     });
@@ -400,6 +469,22 @@ app.post('/api/documents', requireLogin, upload.single('file'), async (req, res)
       type: 'upload_document', user_id: req.user.id, username: req.user.username, full_name: req.user.full_name,
       document_id: id, doc_name, doc_number
     });
+
+    // Beri tahu semua yang diminta TTD (personil departemen terpilih + orang yang di-tag).
+    // Gagal mengirim notifikasi tidak boleh menggagalkan upload yang sudah berhasil.
+    try {
+      const targets = await resolveNotificationTargets({
+        departments: allowedDepartments, userIds: allowedUsers, excludeUserId: req.user.id
+      });
+      await db.addNotifications(targets, {
+        type: 'sign_request',
+        title: 'Dokumen baru menunggu TTD Anda',
+        body: `${doc_number} — ${doc_name}, diupload oleh ${req.user.full_name}`,
+        document_id: id
+      });
+    } catch (e) {
+      console.error('Gagal mengirim notifikasi upload:', e.message);
+    }
 
     res.json({ id, file_type, stored_filename: req.file.filename, driveUploaded: !!driveOriginal });
   } catch (e) {
@@ -421,16 +506,38 @@ app.get('/api/documents/:id', requireLogin, async (req, res) => {
   if (!doc) return res.status(404).json({ error: 'Dokumen tidak ditemukan' });
   if (!canAccessDocument(req.user, doc)) return res.status(403).json({ error: 'Departemen Anda tidak memiliki akses ke dokumen ini' });
   const allSigs = await db.getAllSignaturesForDocument(doc.id);
-  const requiredDepartments = (doc.allowed_departments && doc.allowed_departments.length > 0) ? doc.allowed_departments : [doc.department];
+  const allowedUsers = doc.allowed_users || [];
+  const requiredDepartments = (doc.allowed_departments && doc.allowed_departments.length > 0)
+    ? doc.allowed_departments
+    : (allowedUsers.length > 0 ? [] : [doc.department]);
   const signedDepartments = [...new Set(allSigs.map(s => s.signer_department).filter(Boolean))];
-  const isComplete = requiredDepartments.every(d => signedDepartments.includes(d));
+  const signedUsers = [...new Set(allSigs.map(s => s.signed_by).filter(v => v != null))];
+  const isComplete = requiredDepartments.every(d => signedDepartments.includes(d)) &&
+                     allowedUsers.every(uid => signedUsers.includes(uid));
   // Preview/edit always goes through our own file-serving route below, which fetches
   // fresh from Google Drive each time - never assumes anything is still on local disk.
   const current_file_url = `/api/documents/${doc.id}/file`;
+  // Nama orang yang di-tag di-resolve di sini supaya halaman TTD tidak perlu
+  // meminta seluruh direktori user hanya untuk menampilkan beberapa nama.
+  let requiredUserNames = [];
+  if (allowedUsers.length > 0) {
+    const users = await db.listUsers();
+    const byId = new Map(users.map(u => [u.id, u]));
+    requiredUserNames = allowedUsers.map(uid => ({
+      id: uid,
+      full_name: byId.has(uid) ? byId.get(uid).full_name : `User #${uid}`,
+      signed: signedUsers.includes(uid)
+    }));
+  }
   res.json({
     document: {
       ...doc, signature_count: allSigs.length, current_file_url,
       required_departments: requiredDepartments, signed_departments: signedDepartments,
+      required_users: allowedUsers, signed_users: signedUsers,
+      required_user_names: requiredUserNames,
+      // Halaman sign.html memakai ini untuk menonaktifkan tombol TTD lebih awal,
+      // daripada membiarkan user menempel QR lalu baru ditolak server.
+      can_sign: canSignDocument(req.user, doc),
       completion_status: allSigs.length === 0 ? 'pending' : (isComplete ? 'complete' : 'partial')
     }
   });
@@ -470,7 +577,14 @@ app.post('/api/documents/:id/sign', requireLogin, async (req, res) => {
   try {
     const doc = await db.getDocumentById(req.params.id);
     if (!doc) return res.status(404).json({ error: 'Dokumen tidak ditemukan' });
-    if (!canAccessDocument(req.user, doc)) return res.status(403).json({ error: 'Departemen Anda tidak memiliki akses untuk menandatangani dokumen ini' });
+    if (!canAccessDocument(req.user, doc)) return res.status(403).json({ error: 'Anda tidak memiliki akses ke dokumen ini' });
+    if (!canSignDocument(req.user, doc)) {
+      return res.status(403).json({
+        error: (doc.allowed_users || []).length > 0
+          ? 'Dokumen ini hanya bisa ditandatangani oleh personil yang di-tag secara khusus'
+          : 'Departemen Anda tidak termasuk yang diminta menandatangani dokumen ini'
+      });
+    }
 
     const { qr_x, qr_y, qr_size, page_number } = req.body;
     if (qr_x == null || qr_y == null || qr_size == null) {
@@ -621,6 +735,48 @@ app.post('/api/documents/:id/sign', requireLogin, async (req, res) => {
       type: 'sign_document', user_id: req.user.id, username: req.user.username, full_name: req.user.full_name,
       document_id: doc.id, doc_name: doc.doc_name, doc_number: doc.doc_number, signature_id: signatureId
     });
+
+    // Notifikasi setelah TTD: pengupload selalu diberi tahu, dan kalau dokumennya sudah
+    // lengkap semua pihak yang terlibat ikut diberi tahu. Sama seperti di upload, kegagalan
+    // di sini tidak boleh membatalkan TTD yang sudah tersimpan.
+    try {
+      const fresh = await db.getDocumentById(doc.id);
+      const allSigs = await db.getAllSignaturesForDocument(doc.id);
+      const reqDepts = (fresh.allowed_departments && fresh.allowed_departments.length > 0)
+        ? fresh.allowed_departments
+        : ((fresh.allowed_users || []).length > 0 ? [] : [fresh.department]);
+      const reqUsers = fresh.allowed_users || [];
+      const signedDepts = [...new Set(allSigs.map(s => s.signer_department).filter(Boolean))];
+      const signedUsers = [...new Set(allSigs.map(s => s.signed_by).filter(v => v != null))];
+      const complete = reqDepts.every(d => signedDepts.includes(d)) && reqUsers.every(u => signedUsers.includes(u));
+
+      if (complete) {
+        const everyone = await resolveNotificationTargets({
+          departments: reqDepts, userIds: [...reqUsers, fresh.uploaded_by], excludeUserId: null
+        });
+        await db.addNotifications(everyone, {
+          type: 'document_complete',
+          title: 'Dokumen sudah lengkap TTD',
+          body: `${fresh.doc_number} — ${fresh.doc_name} telah ditandatangani semua pihak`,
+          document_id: fresh.id
+        });
+      } else {
+        // Belum lengkap: kabari pengupload, plus ingatkan yang belum tandatangan.
+        const pendingDepts = reqDepts.filter(d => !signedDepts.includes(d));
+        const pendingUsers = reqUsers.filter(u => !signedUsers.includes(u));
+        const targets = await resolveNotificationTargets({
+          departments: pendingDepts, userIds: [...pendingUsers, fresh.uploaded_by], excludeUserId: req.user.id
+        });
+        await db.addNotifications(targets, {
+          type: 'signed',
+          title: `${req.user.full_name} menandatangani dokumen`,
+          body: `${fresh.doc_number} — ${fresh.doc_name}. Masih menunggu TTD pihak lain.`,
+          document_id: fresh.id
+        });
+      }
+    } catch (e) {
+      console.error('Gagal mengirim notifikasi TTD:', e.message);
+    }
 
     res.json({
       ok: true, signatureId, verifyUrl, signedFile: `/signed/${outFilename}`,

@@ -8,21 +8,21 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/styles.css">
 <style>
-  #allowedDeptCheckboxes { border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 14px; max-height: 220px; overflow-y: auto; }
+  #allowedDeptCheckboxes { border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 14px; max-height: 200px; overflow-y: auto; }
   .dept-hint { font-size: 11px; color: var(--ink-faint); margin-top: 6px; }
-  .upload-progress-wrap {
-    display: none; margin-top: 14px; margin-bottom: 4px;
+  .upload-progress-wrap { display: none; margin-top: 14px; margin-bottom: 4px; }
+  .upload-progress-track { width: 100%; height: 8px; background: var(--border); border-radius: 999px; overflow: hidden; }
+  .upload-progress-bar { height: 100%; width: 0%; background: var(--brand); border-radius: 999px; transition: width 0.15s var(--ease); }
+  .upload-progress-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--ink-soft); margin-top: 6px; }
+  .mode-tabs { display: flex; gap: 8px; margin-bottom: 10px; }
+  .mode-tab {
+    flex: 1; padding: 9px 12px; border: 1px solid var(--border-strong); background: var(--card);
+    border-radius: var(--radius-sm); font-size: 12.5px; cursor: pointer; color: var(--ink-soft);
+    font-family: var(--font-body); text-align: center;
   }
-  .upload-progress-track {
-    width: 100%; height: 8px; background: var(--border); border-radius: 999px; overflow: hidden;
-  }
-  .upload-progress-bar {
-    height: 100%; width: 0%; background: var(--brand); border-radius: 999px;
-    transition: width 0.15s var(--ease);
-  }
-  .upload-progress-label {
-    display: flex; justify-content: space-between; font-size: 12px; color: var(--ink-soft); margin-top: 6px;
-  }
+  .mode-tab.active { border-color: var(--brand); background: var(--brand-soft); color: var(--brand-dark); font-weight: 600; }
+  .doc-title { font-weight: 600; color: var(--ink); }
+  .doc-num { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-faint); margin-top: 2px; }
 </style>
 </head>
 <body>
@@ -32,157 +32,173 @@
     <h1>TTD Elektronik QR Code — PT REMS</h1>
   </div>
   <div style="display:flex; align-items:center; gap:10px;">
-    <a id="adminLink" href="/admin.html" style="display:none;">Kelola User &amp; Departemen</a>
-    <a id="auditLink" href="/audit.html" style="display:none;">Audit Trail</a>
+    <div class="notif-wrap">
+      <button class="notif-btn" id="notifBtn" title="Notifikasi">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+        Notifikasi
+        <span class="notif-dot" id="notifDot">0</span>
+      </button>
+      <div class="notif-panel" id="notifPanel">
+        <div class="notif-head">
+          <span>Notifikasi</span>
+          <a onclick="markAllRead()">Tandai semua dibaca</a>
+        </div>
+        <div id="notifList"><div class="notif-empty">Memuat...</div></div>
+      </div>
+    </div>
     <a href="/change-password.html">Ganti Password</a>
     <span class="who" id="whoami"></span>
     <button onclick="logout()">Keluar</button>
   </div>
 </header>
-<main>
-  <div class="panel">
-    <div class="panel-kop"><h2>Upload Dokumen Baru</h2></div>
-    <div class="msg" id="uploadMsg"></div>
-    <form id="uploadForm">
-      <div class="row">
-        <div>
-          <label>Nama Dokumen</label>
-          <input type="text" id="doc_name" required placeholder="cth. SOP Pembersihan Ruang Steril">
-        </div>
-        <div>
-          <label>Nomor Dokumen</label>
-          <input type="text" id="doc_number" required placeholder="cth. SOP/QA/001">
-        </div>
-      </div>
-      <div class="row">
-        <div>
-          <label>Departemen (untuk folder Google Drive)</label>
-          <select id="department" required></select>
-        </div>
-        <div>
-          <label>File (PDF / JPG / PNG)</label>
-          <input type="file" id="file" accept=".pdf,.jpg,.jpeg,.png" required>
-        </div>
-      </div>
-      <div class="row">
-        <div style="flex:1;">
-          <label>Departemen yang Boleh Akses/TTD Dokumen Ini</label>
-          <div id="allowedDeptCheckboxes" class="dept-checkbox-grid"></div>
-          <div class="dept-hint">Departemen yang tidak dicentang tidak akan bisa melihat/menandatangani dokumen ini (kecuali admin).</div>
-        </div>
-      </div>
-      <div class="upload-progress-wrap" id="uploadProgressWrap">
-        <div class="upload-progress-track"><div class="upload-progress-bar" id="uploadProgressBar"></div></div>
-        <div class="upload-progress-label">
-          <span id="uploadProgressStatus">Mengupload...</span>
-          <span id="uploadProgressPercent">0%</span>
-        </div>
-      </div>
-      <button type="submit" class="primary" id="uploadBtn">Upload</button>
-    </form>
-  </div>
 
-  <div class="panel" style="padding:0 24px 20px;">
-    <div class="panel-kop"><h2>Cari Dokumen</h2></div>
-    <div style="display:flex; gap:10px;">
-      <input type="text" id="searchBox" placeholder="Ketik nama dokumen atau nomor dokumen..." style="font-size:14px; flex:1;">
-      <button type="button" class="primary" id="searchBtn" style="width:auto; margin-top:0; padding:10px 20px; display:flex; align-items:center; gap:7px; white-space:nowrap;">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-        Cari
+<div class="app-shell">
+  <aside class="sidebar">
+    <h3>Dokumen</h3>
+    <nav class="side-nav">
+      <button class="side-link attention" data-view="inbox" onclick="setView('inbox')">
+        <span>Perlu TTD Saya</span><span class="side-count" id="cnt-inbox">0</span>
       </button>
-    </div>
-  </div>
+      <button class="side-link" data-view="pending" onclick="setView('pending')">
+        <span>Belum TTD</span><span class="side-count" id="cnt-pending">0</span>
+      </button>
+      <button class="side-link" data-view="partial" onclick="setView('partial')">
+        <span>Sebagian TTD</span><span class="side-count" id="cnt-partial">0</span>
+      </button>
+      <button class="side-link" data-view="complete" onclick="setView('complete')">
+        <span>Lengkap TTD</span><span class="side-count" id="cnt-complete">0</span>
+      </button>
+      <button class="side-link" data-view="archived" onclick="setView('archived')">
+        <span>Diarsipkan</span><span class="side-count" id="cnt-archived">0</span>
+      </button>
+    </nav>
+    <h3>Tindakan</h3>
+    <nav class="side-nav">
+      <button class="side-link" data-view="upload" onclick="setView('upload')"><span>+ Upload Dokumen</span></button>
+    </nav>
+    <h3>Pengaturan</h3>
+    <nav class="side-nav">
+      <a class="side-link" id="adminLink" href="/admin.html" style="display:none;"><span>Kelola User &amp; Departemen</span></a>
+      <a class="side-link" id="auditLink" href="/audit.html" style="display:none;"><span>Audit Trail</span></a>
+      <a class="side-link" href="/change-password.html"><span>Ganti Password</span></a>
+    </nav>
+  </aside>
 
-  <div class="panel">
-    <div class="panel-kop">
-      <h2>Belum TTD</h2>
-      <div style="display:flex; align-items:center; gap:10px;">
-        <span class="kop-badge" id="pendingCount">0 dokumen</span>
-        <button class="kop-toggle" id="pendingToggle" onclick="toggleSection('pending')" title="Lipat/buka daftar">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-        </button>
+  <main>
+    <!-- ---------- VIEW: UPLOAD ---------- -->
+    <div class="panel" id="view-upload" style="display:none;">
+      <div class="panel-kop"><h2>Upload Dokumen Baru</h2></div>
+      <div class="msg" id="uploadMsg"></div>
+      <form id="uploadForm">
+        <div class="row">
+          <div>
+            <label>Nama Dokumen</label>
+            <input type="text" id="doc_name" required placeholder="cth. SOP Pembersihan Ruang Steril">
+          </div>
+          <div>
+            <label>Nomor Dokumen</label>
+            <input type="text" id="doc_number" required placeholder="cth. SOP/QA/001">
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>Departemen (untuk folder Google Drive)</label>
+            <select id="department" required></select>
+          </div>
+          <div>
+            <label>File (PDF / JPG / PNG)</label>
+            <input type="file" id="file" accept=".pdf,.jpg,.jpeg,.png" required>
+          </div>
+        </div>
+
+        <div class="row">
+          <div style="flex:1;">
+            <label>Siapa yang harus menandatangani?</label>
+            <div class="mode-tabs">
+              <button type="button" class="mode-tab active" id="tabDept" onclick="setSignerMode('dept')">Per Departemen</button>
+              <button type="button" class="mode-tab" id="tabUser" onclick="setSignerMode('user')">Tag Personil</button>
+              <button type="button" class="mode-tab" id="tabBoth" onclick="setSignerMode('both')">Gabungan</button>
+            </div>
+
+            <div id="deptPickerWrap">
+              <div id="allowedDeptCheckboxes" class="dept-checkbox-grid"></div>
+              <div class="dept-hint">Semua personil dari departemen yang dicentang bisa melihat dan menandatangani dokumen ini. Cukup satu orang per departemen agar departemen itu dihitung sudah TTD.</div>
+            </div>
+
+            <div id="userPickerWrap" style="display:none;">
+              <input type="text" id="userSearch" placeholder="Cari nama atau departemen personil..." style="font-size:13px; margin-bottom:8px;">
+              <div id="allowedUserPicker" class="user-picker"></div>
+              <div class="dept-hint">Hanya personil yang di-tag di sini yang bisa menandatangani, dan dokumen baru dianggap lengkap setelah <b>setiap orang</b> yang di-tag sudah TTD.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="upload-progress-wrap" id="uploadProgressWrap">
+          <div class="upload-progress-track"><div class="upload-progress-bar" id="uploadProgressBar"></div></div>
+          <div class="upload-progress-label">
+            <span id="uploadProgressStatus">Mengupload...</span>
+            <span id="uploadProgressPercent">0%</span>
+          </div>
+        </div>
+        <button type="submit" class="primary" id="uploadBtn">Upload</button>
+      </form>
+    </div>
+
+    <!-- ---------- VIEW: DAFTAR DOKUMEN ---------- -->
+    <div id="view-list">
+      <div class="panel" style="padding:0 24px 20px;">
+        <div class="panel-kop"><h2 id="listTitle">Dokumen</h2>
+          <span class="kop-badge" id="listCount">0 dokumen</span>
+        </div>
+        <p class="sub" id="listDesc" style="margin-top:0;"></p>
+        <div style="display:flex; gap:10px;">
+          <input type="text" id="searchBox" placeholder="Ketik nama dokumen atau nomor dokumen..." style="font-size:14px; flex:1;">
+          <button type="button" class="primary" id="searchBtn" style="width:auto; margin-top:0; padding:10px 20px; display:flex; align-items:center; gap:7px; white-space:nowrap;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            Cari
+          </button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <table>
+          <thead>
+            <tr><th>Dokumen</th><th>Progres TTD</th><th>Diupload oleh</th><th>Aksi</th></tr>
+          </thead>
+          <tbody id="docList"></tbody>
+        </table>
+        <p id="listEmpty" class="empty" style="display:none;">Tidak ada dokumen di kategori ini.</p>
       </div>
     </div>
-    <table>
-      <thead>
-        <tr><th>Nama Dokumen</th><th>No. Dokumen</th><th>Departemen</th><th>Diupload oleh</th><th>Tandatangani</th><th>Kelola</th></tr>
-      </thead>
-      <tbody id="pendingDocList"></tbody>
-    </table>
-    <p id="pendingEmpty" class="empty" style="display:none;">Tidak ada dokumen yang menunggu TTD.</p>
-  </div>
+  </main>
+</div>
 
-  <div class="panel">
-    <div class="panel-kop">
-      <h2>Sebagian TTD</h2>
-      <div style="display:flex; align-items:center; gap:10px;">
-        <span class="kop-badge" id="partialCount">0 dokumen</span>
-        <button class="kop-toggle" id="partialToggle" onclick="toggleSection('partial')" title="Lipat/buka daftar">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-        </button>
-      </div>
-    </div>
-    <p class="sub">Sudah ada tanda tangan, tapi belum semua departemen yang wajib TTD menandatangani.</p>
-    <table>
-      <thead>
-        <tr><th>Nama Dokumen</th><th>No. Dokumen</th><th>Progres TTD</th><th>Diupload oleh</th><th>Tambah TTD</th><th>Lihat</th><th>Kelola</th></tr>
-      </thead>
-      <tbody id="partialDocList"></tbody>
-    </table>
-    <p id="partialEmpty" class="empty" style="display:none;">Tidak ada dokumen yang sebagian TTD.</p>
-  </div>
-
-  <div class="panel">
-    <div class="panel-kop">
-      <h2>Lengkap TTD</h2>
-      <div style="display:flex; align-items:center; gap:10px;">
-        <span class="kop-badge" id="signedCount">0 dokumen</span>
-        <button class="kop-toggle" id="signedToggle" onclick="toggleSection('signed')" title="Lipat/buka daftar">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-        </button>
-      </div>
-    </div>
-    <p class="sub">Semua departemen yang wajib menandatangani sudah TTD. Tetap bisa ditambah TTD lagi kalau perlu.</p>
-    <table>
-      <thead>
-        <tr><th>Nama Dokumen</th><th>No. Dokumen</th><th>Departemen</th><th>Diupload oleh</th><th>Jumlah TTD</th><th>Tambah TTD</th><th>Lihat</th><th>Kelola</th></tr>
-      </thead>
-      <tbody id="signedDocList"></tbody>
-    </table>
-    <p id="signedEmpty" class="empty" style="display:none;">Belum ada dokumen yang lengkap TTD.</p>
-  </div>
-
-  <div class="panel">
-    <div class="panel-kop">
-      <h2>Diarsipkan</h2>
-      <div style="display:flex; align-items:center; gap:10px;">
-        <span class="kop-badge" id="archivedCount">0 dokumen</span>
-        <button class="kop-toggle" id="archivedToggle" onclick="toggleSection('archived')" title="Lipat/buka daftar">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-        </button>
-      </div>
-    </div>
-    <p class="sub">Dokumen yang diarsipkan tidak hilang - QR yang sudah dicetak tetap valid kalau di-scan. Bisa dikembalikan kapan saja.</p>
-    <table>
-      <thead>
-        <tr><th>Nama Dokumen</th><th>No. Dokumen</th><th>Departemen</th><th>Jumlah TTD</th><th>Kelola</th></tr>
-      </thead>
-      <tbody id="archivedDocList"></tbody>
-    </table>
-    <p id="archivedEmpty" class="empty" style="display:none;">Belum ada dokumen yang diarsipkan.</p>
-  </div>
-</main>
 <script>
 let currentUser = null;
+let allDocsCache = [];
+let directoryCache = [];
+let currentView = 'inbox';
+let signerMode = 'dept';
+
+const VIEWS = {
+  inbox:    { title: 'Perlu TTD Saya',  desc: 'Dokumen yang menunggu tanda tangan Anda - baik karena departemen Anda diminta TTD, maupun karena Anda di-tag langsung.' },
+  pending:  { title: 'Belum TTD',       desc: 'Belum ada satu pun tanda tangan pada dokumen ini.' },
+  partial:  { title: 'Sebagian TTD',    desc: 'Sudah ada tanda tangan, tapi belum semua pihak yang wajib TTD menandatangani.' },
+  complete: { title: 'Lengkap TTD',     desc: 'Semua pihak yang wajib menandatangani sudah TTD. Tetap bisa ditambah TTD lagi kalau perlu.' },
+  archived: { title: 'Diarsipkan',      desc: 'Dokumen yang diarsipkan tidak hilang - QR yang sudah dicetak tetap valid kalau di-scan. Bisa dikembalikan kapan saja.' }
+};
+
 async function checkAuth() {
   const res = await fetch('/api/me');
   const data = await res.json();
   if (!data.user) { window.location.href = '/'; return; }
   currentUser = data.user;
   document.getElementById('whoami').textContent = `${data.user.full_name} (${data.user.username})`;
-  if (data.user.role === 'admin') document.getElementById('adminLink').style.display = 'inline';
+  if (data.user.role === 'admin') document.getElementById('adminLink').style.display = 'flex';
   const canViewAudit = data.user.role === 'admin' || (data.user.jabatan && /manager/i.test(data.user.jabatan));
-  if (canViewAudit) document.getElementById('auditLink').style.display = 'inline';
+  if (canViewAudit) document.getElementById('auditLink').style.display = 'flex';
+  loadDocs();
+  loadNotifications();
 }
 async function logout() {
   await fetch('/api/logout', { method: 'POST' });
@@ -190,6 +206,85 @@ async function logout() {
 }
 function showMsg(el, text, type) {
   el.textContent = text; el.className = 'msg ' + type; el.style.display = 'block';
+}
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// ---------- NAVIGASI SIDEBAR ----------
+function setView(view) {
+  currentView = view;
+  document.querySelectorAll('.side-link').forEach(el => el.classList.toggle('active', el.dataset.view === view));
+  const isUpload = view === 'upload';
+  document.getElementById('view-upload').style.display = isUpload ? 'block' : 'none';
+  document.getElementById('view-list').style.display = isUpload ? 'none' : 'block';
+  if (!isUpload) {
+    document.getElementById('listTitle').textContent = VIEWS[view].title;
+    document.getElementById('listDesc').textContent = VIEWS[view].desc;
+    renderDocs();
+  }
+}
+
+// ---------- NOTIFIKASI ----------
+function timeAgo(iso) {
+  const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (diff < 60) return 'baru saja';
+  if (diff < 3600) return `${Math.floor(diff / 60)} menit lalu`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)} jam lalu`;
+  return `${Math.floor(diff / 86400)} hari lalu`;
+}
+
+async function loadNotifications() {
+  try {
+    const res = await fetch('/api/notifications');
+    const data = await res.json();
+    const dot = document.getElementById('notifDot');
+    dot.textContent = data.unread > 9 ? '9+' : data.unread;
+    dot.classList.toggle('show', data.unread > 0);
+    const list = document.getElementById('notifList');
+    if (!data.notifications.length) {
+      list.innerHTML = '<div class="notif-empty">Belum ada notifikasi.</div>';
+      return;
+    }
+    list.innerHTML = data.notifications.map(n => `
+      <div class="notif-item ${n.read ? '' : 'unread'}" onclick="openNotif('${esc(n.document_id || '')}')">
+        <div class="notif-title">${esc(n.title)}</div>
+        <div class="notif-body">${esc(n.body)}</div>
+        <div class="notif-time">${timeAgo(n.created_at)}</div>
+      </div>`).join('');
+  } catch (e) { /* jangan ganggu dashboard kalau notifikasi gagal dimuat */ }
+}
+
+function openNotif(docId) {
+  if (docId) window.location.href = `/sign.html?id=${docId}`;
+}
+
+async function markAllRead() {
+  await fetch('/api/notifications/read', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+  loadNotifications();
+}
+
+document.getElementById('notifBtn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  const panel = document.getElementById('notifPanel');
+  panel.classList.toggle('open');
+  if (panel.classList.contains('open')) loadNotifications();
+});
+document.addEventListener('click', (e) => {
+  const panel = document.getElementById('notifPanel');
+  if (!panel.contains(e.target)) panel.classList.remove('open');
+});
+// Cek notifikasi baru secara berkala supaya lonceng terupdate tanpa refresh halaman
+setInterval(loadNotifications, 60000);
+
+// ---------- UPLOAD ----------
+function setSignerMode(mode) {
+  signerMode = mode;
+  document.getElementById('tabDept').classList.toggle('active', mode === 'dept');
+  document.getElementById('tabUser').classList.toggle('active', mode === 'user');
+  document.getElementById('tabBoth').classList.toggle('active', mode === 'both');
+  document.getElementById('deptPickerWrap').style.display = (mode === 'dept' || mode === 'both') ? 'block' : 'none';
+  document.getElementById('userPickerWrap').style.display = (mode === 'user' || mode === 'both') ? 'block' : 'none';
 }
 
 async function loadDepartments() {
@@ -208,17 +303,37 @@ async function loadDepartments() {
     const opt = document.createElement('option');
     opt.value = d.name; opt.textContent = d.name;
     select.appendChild(opt);
-
     const label = document.createElement('label');
-    // styling handled by the .dept-checkbox-grid label CSS rule (fixes the checkbox layout)
-    label.innerHTML = `<input type="checkbox" class="allowed-dept-cb" value="${d.name}"> ${d.name}`;
+    label.innerHTML = `<input type="checkbox" class="allowed-dept-cb" value="${esc(d.name)}"> ${esc(d.name)}`;
     checkboxes.appendChild(label);
   });
 }
 
-// Uploads the form via XMLHttpRequest (instead of fetch) specifically so we get real
-// upload-progress events - fetch has no cross-browser way to report bytes-sent progress
-// for a request body, but XHR's upload.onprogress does.
+async function loadDirectory() {
+  const res = await fetch('/api/users/directory');
+  const data = await res.json();
+  directoryCache = data.users || [];
+  renderUserPicker();
+}
+
+function renderUserPicker() {
+  const q = (document.getElementById('userSearch').value || '').trim().toLowerCase();
+  // Centangan yang sudah dipilih dipertahankan saat mengetik di kotak pencarian,
+  // supaya pilihan tidak hilang begitu daftarnya difilter.
+  const checked = new Set(Array.from(document.querySelectorAll('.allowed-user-cb:checked')).map(cb => Number(cb.value)));
+  const box = document.getElementById('allowedUserPicker');
+  const matches = directoryCache.filter(u =>
+    !q || u.full_name.toLowerCase().includes(q) || (u.department || '').toLowerCase().includes(q) || u.username.toLowerCase().includes(q)
+  );
+  if (!matches.length) { box.innerHTML = '<span style="color:var(--ink-faint); font-size:12.5px;">Tidak ada personil yang cocok.</span>'; return; }
+  box.innerHTML = matches.map(u => `
+    <label>
+      <input type="checkbox" class="allowed-user-cb" value="${u.id}" ${checked.has(u.id) ? 'checked' : ''}>
+      <span>${esc(u.full_name)} <span class="user-dept">— ${esc(u.department || 'tanpa departemen')}</span></span>
+    </label>`).join('');
+}
+document.getElementById('userSearch').addEventListener('input', renderUserPicker);
+
 function uploadDocumentWithProgress(formData, onProgress) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -245,12 +360,25 @@ document.getElementById('uploadForm').addEventListener('submit', async (e) => {
   const progressBar = document.getElementById('uploadProgressBar');
   const progressPercent = document.getElementById('uploadProgressPercent');
   const progressStatus = document.getElementById('uploadProgressStatus');
-  const allowedDepartments = Array.from(document.querySelectorAll('.allowed-dept-cb:checked')).map(cb => cb.value);
+
+  // Hanya kirim daftar yang relevan dengan mode terpilih, supaya centangan yang
+  // tertinggal dari mode lain tidak diam-diam ikut memberi izin TTD.
+  const allowedDepartments = (signerMode === 'dept' || signerMode === 'both')
+    ? Array.from(document.querySelectorAll('.allowed-dept-cb:checked')).map(cb => cb.value) : [];
+  const allowedUsers = (signerMode === 'user' || signerMode === 'both')
+    ? Array.from(document.querySelectorAll('.allowed-user-cb:checked')).map(cb => Number(cb.value)) : [];
+
+  if (signerMode !== 'dept' && allowedUsers.length === 0 && allowedDepartments.length === 0) {
+    showMsg(msgEl, 'Pilih minimal satu departemen atau tag minimal satu personil yang harus TTD.', 'error');
+    return;
+  }
+
   const fd = new FormData();
   fd.append('doc_name', document.getElementById('doc_name').value);
   fd.append('doc_number', document.getElementById('doc_number').value);
   fd.append('department', document.getElementById('department').value);
   fd.append('allowed_departments', JSON.stringify(allowedDepartments));
+  fd.append('allowed_users', JSON.stringify(allowedUsers));
   fd.append('file', document.getElementById('file').files[0]);
 
   msgEl.style.display = 'none';
@@ -264,11 +392,12 @@ document.getElementById('uploadForm').addEventListener('submit', async (e) => {
     await uploadDocumentWithProgress(fd, (percent) => {
       progressBar.style.width = percent + '%';
       progressPercent.textContent = percent + '%';
-      if (percent >= 100) progressStatus.textContent = 'Memproses di server...'; // upload done, server still saving/embedding
+      if (percent >= 100) progressStatus.textContent = 'Memproses di server...';
     });
-    showMsg(msgEl, 'Dokumen berhasil diupload. Silakan lanjut ke penempatan QR.', 'success');
+    showMsg(msgEl, 'Dokumen berhasil diupload dan notifikasi sudah dikirim ke pihak yang harus TTD.', 'success');
     document.getElementById('uploadForm').reset();
     loadDepartments();
+    renderUserPicker();
     loadDocs();
   } catch (err) {
     showMsg(msgEl, err.message, 'error');
@@ -278,158 +407,143 @@ document.getElementById('uploadForm').addEventListener('submit', async (e) => {
   }
 });
 
+// ---------- IZIN (bayangan dari app.js) ----------
 function canManage(doc) {
   if (!currentUser) return false;
   if (currentUser.role === 'admin') return true;
   if (doc.uploaded_by === currentUser.id) return true;
   return currentUser.department === doc.department;
 }
-
-// Permanent delete is narrower than archive/manage: only the uploader themselves or an
-// admin (not "anyone in the same department") - matches canDeleteDocument() in app.js.
 function canDelete(doc) {
   if (!currentUser) return false;
   if (currentUser.role === 'admin') return true;
   return doc.uploaded_by === currentUser.id;
 }
-
-function manageCellHtml(doc) {
-  const canManageThis = canManage(doc);
-  const canDeleteThis = canDelete(doc);
-  if (!canManageThis && !canDeleteThis) return '<span style="color:var(--ink-faint);">&mdash;</span>';
-  const archiveBtn = canManageThis
-    ? `<a class="action" href="#" onclick="archiveDoc('${doc.id}', true); return false;" style="color:var(--amber);">Arsipkan</a>`
-    : '';
-  // Allowed even for documents that already have signatures (e.g. salah TTE) - the
-  // confirm dialog below makes very clear this also wipes the file from Drive and
-  // invalidates any QR already printed.
-  const deleteBtn = canDeleteThis
-    ? `<a class="action" href="#" onclick="deleteDoc('${doc.id}'); return false;" style="color:var(--red); margin-left:10px;">Hapus</a>`
-    : '';
-  return archiveBtn + deleteBtn;
+// Cerminan canSignDocument() di app.js - dipakai untuk memutuskan apakah tombol
+// "Tandatangani" ditampilkan. Server tetap memeriksa ulang saat TTD dikirim.
+function canSign(doc) {
+  if (!currentUser) return false;
+  if (currentUser.role === 'admin') return true;
+  const reqUsers = doc.required_users || [];
+  const reqDepts = doc.required_departments || [];
+  if (reqUsers.includes(currentUser.id)) return true;
+  if (reqDepts.includes(currentUser.department)) return true;
+  if (reqUsers.length === 0 && reqDepts.length === 0) return currentUser.department === doc.department || doc.uploaded_by === currentUser.id;
+  return false;
+}
+// "Perlu TTD saya" = saya boleh TTD DAN bagian saya belum terpenuhi. Kalau saya di-tag
+// sebagai orang, yang dilihat adalah TTD saya sendiri; kalau lewat departemen, cukup
+// departemen saya sudah terwakili oleh siapa pun.
+function needsMySignature(doc) {
+  if (!currentUser || doc.archived) return false;
+  const reqUsers = doc.required_users || [];
+  const signedUsers = doc.signed_users || [];
+  if (reqUsers.includes(currentUser.id)) return !signedUsers.includes(currentUser.id);
+  const reqDepts = doc.required_departments || [];
+  const signedDepts = doc.signed_departments || [];
+  if (reqDepts.includes(currentUser.department)) return !signedDepts.includes(currentUser.department);
+  return false;
 }
 
-let allDocsCache = [];
-// Default: Belum TTD & Sebagian TTD start open; Lengkap TTD & Diarsipkan start collapsed
-// (only showing the newest couple of documents) since those lists tend to grow long.
-let sectionExpanded = { pending: true, partial: true, signed: false, archived: false };
-const COLLAPSED_PREVIEW_COUNT = 2;
-
-function toggleSection(key) {
-  sectionExpanded[key] = !sectionExpanded[key];
-  renderDocs();
-}
-
-function updateToggleIcon(key) {
-  const btn = document.getElementById(`${key}Toggle`);
-  if (!btn) return;
-  btn.classList.toggle('collapsed', !sectionExpanded[key]);
-}
-
-// Renders a section's rows into its <tbody>. If the section is collapsed (and no search
-// is active), only the first COLLAPSED_PREVIEW_COUNT docs show, plus a "Tampilkan semua"
-// row. Searching always shows full matching results regardless of collapse state.
-function renderSectionRows(tbody, docs, key, isSearching, rowBuilder, colspan) {
-  const showAll = isSearching || sectionExpanded[key];
-  const toShow = showAll ? docs : docs.slice(0, COLLAPSED_PREVIEW_COUNT);
-  toShow.forEach(doc => tbody.appendChild(rowBuilder(doc)));
-  if (!showAll && docs.length > COLLAPSED_PREVIEW_COUNT) {
-    const tr = document.createElement('tr');
-    const td = document.createElement('td');
-    td.colSpan = colspan;
-    td.style.cssText = 'text-align:center; padding:12px;';
-    td.innerHTML = `<a class="action" href="#" onclick="toggleSection('${key}'); return false;">Tampilkan semua ${docs.length} dokumen &darr;</a>`;
-    tr.appendChild(td);
-    tbody.appendChild(tr);
-  }
-  updateToggleIcon(key);
-}
-
+// ---------- DAFTAR DOKUMEN ----------
 async function loadDocs() {
   const res = await fetch('/api/documents');
   const data = await res.json();
   allDocsCache = data.documents;
+  updateCounts();
   renderDocs();
 }
 
+function bucketize() {
+  const active = allDocsCache.filter(d => !d.archived);
+  return {
+    inbox: active.filter(needsMySignature),
+    pending: active.filter(d => d.completion_status === 'pending' || !d.completion_status),
+    partial: active.filter(d => d.completion_status === 'partial'),
+    complete: active.filter(d => d.completion_status === 'complete'),
+    archived: allDocsCache.filter(d => d.archived)
+  };
+}
+
+function updateCounts() {
+  const b = bucketize();
+  Object.keys(b).forEach(k => {
+    const el = document.getElementById('cnt-' + k);
+    if (el) el.textContent = b[k].length;
+  });
+}
+
+function progressCellHtml(doc) {
+  const reqDepts = doc.required_departments || [];
+  const signedDepts = doc.signed_departments || [];
+  const people = doc.required_user_names || [];
+  const parts = [];
+  if (reqDepts.length) {
+    const missing = reqDepts.filter(d => !signedDepts.includes(d));
+    parts.push(`<span class="badge ${missing.length ? 'pending' : 'signed'}">${signedDepts.filter(d => reqDepts.includes(d)).length}/${reqDepts.length} departemen</span>`);
+    if (missing.length) parts.push(`<div style="font-size:11px; color:var(--ink-faint); margin-top:3px;">Menunggu: ${esc(missing.join(', '))}</div>`);
+  }
+  if (people.length) {
+    parts.push(`<div style="margin-top:4px;">` +
+      people.map(p => `<span class="tag-chip ${p.signed ? 'done' : ''}">${p.signed ? '✓' : '•'} ${esc(p.full_name)}</span>`).join('') +
+      `</div>`);
+  }
+  if (!parts.length) parts.push(`<span class="badge">${doc.signature_count} TTD</span>`);
+  return parts.join('');
+}
+
+function actionCellHtml(doc) {
+  const links = [];
+  if (!doc.archived && canSign(doc)) {
+    links.push(`<a class="action" href="/sign.html?id=${doc.id}">${doc.signature_count > 0 ? '+ Tambah TTD' : 'Tandatangani'}</a>`);
+  }
+  if (doc.signature_count > 0) {
+    links.push(`<a class="action" href="#" onclick="viewSigned('${doc.id}'); return false;">Lihat</a>`);
+  }
+  if (doc.archived) {
+    if (canManage(doc)) links.push(`<a class="action" href="#" onclick="archiveDoc('${doc.id}', false); return false;">Kembalikan</a>`);
+  } else if (canManage(doc)) {
+    links.push(`<a class="action" href="#" onclick="archiveDoc('${doc.id}', true); return false;" style="color:var(--amber);">Arsipkan</a>`);
+  }
+  if (canDelete(doc)) links.push(`<a class="action" href="#" onclick="deleteDoc('${doc.id}'); return false;" style="color:var(--red);">Hapus</a>`);
+  return links.length ? links.join(' ') : '<span style="color:var(--ink-faint);">&mdash;</span>';
+}
+
 function renderDocs() {
+  if (currentView === 'upload') return;
   const query = (document.getElementById('searchBox').value || '').trim().toLowerCase();
-  const isSearching = query.length > 0;
   const matches = doc => !query || doc.doc_name.toLowerCase().includes(query) || doc.doc_number.toLowerCase().includes(query);
+  const docs = bucketize()[currentView].filter(matches);
 
-  const pendingBody = document.getElementById('pendingDocList');
-  const partialBody = document.getElementById('partialDocList');
-  const signedBody = document.getElementById('signedDocList');
-  const archivedBody = document.getElementById('archivedDocList');
-  pendingBody.innerHTML = '';
-  partialBody.innerHTML = '';
-  signedBody.innerHTML = '';
-  archivedBody.innerHTML = '';
+  const tbody = document.getElementById('docList');
+  tbody.innerHTML = '';
+  document.getElementById('listEmpty').style.display = docs.length ? 'none' : 'block';
+  document.getElementById('listCount').textContent = `${docs.length} dokumen`;
 
-  const filtered = allDocsCache.filter(matches);
-  const active = filtered.filter(d => !d.archived);
-  const archived = filtered.filter(d => d.archived);
-  const pending = active.filter(d => d.completion_status === 'pending' || !d.completion_status);
-  const partial = active.filter(d => d.completion_status === 'partial');
-  const complete = active.filter(d => d.completion_status === 'complete' || (d.completion_status === undefined && d.signature_count > 0));
-
-  document.getElementById('pendingEmpty').style.display = pending.length === 0 ? 'block' : 'none';
-  document.getElementById('partialEmpty').style.display = partial.length === 0 ? 'block' : 'none';
-  document.getElementById('signedEmpty').style.display = complete.length === 0 ? 'block' : 'none';
-  document.getElementById('archivedEmpty').style.display = archived.length === 0 ? 'block' : 'none';
-
-  document.getElementById('pendingCount').textContent = `${pending.length} dokumen`;
-  document.getElementById('partialCount').textContent = `${partial.length} dokumen`;
-  document.getElementById('signedCount').textContent = `${complete.length} dokumen`;
-  document.getElementById('archivedCount').textContent = `${archived.length} dokumen`;
-
-  renderSectionRows(pendingBody, pending, 'pending', isSearching, doc => {
+  docs.forEach(doc => {
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${doc.doc_name}</td><td>${doc.doc_number}</td><td>${doc.department}</td><td>${doc.uploaded_by_name}</td>
-      <td><a class="action" href="/sign.html?id=${doc.id}">Tandatangani</a></td>
-      <td>${manageCellHtml(doc)}</td>`;
-    return tr;
-  }, 6);
+    const nameCell = document.createElement('td');
+    nameCell.innerHTML = `<div class="doc-title"></div><div class="doc-num"></div>`;
+    // Nama & nomor dokumen diisi lewat textContent (bukan innerHTML) supaya judul
+    // dokumen yang mengandung karakter HTML tidak bisa menyuntik markup ke dashboard.
+    nameCell.querySelector('.doc-title').textContent = doc.doc_name;
+    nameCell.querySelector('.doc-num').textContent = `${doc.doc_number} · ${doc.department}`;
+    tr.appendChild(nameCell);
 
-  renderSectionRows(partialBody, partial, 'partial', isSearching, doc => {
-    const req = doc.required_departments || [];
-    const signed = doc.signed_departments || [];
-    const missing = req.filter(d => !signed.includes(d));
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${doc.doc_name}</td><td>${doc.doc_number}</td>
-      <td><span class="badge pending">${signed.length}/${req.length} departemen</span>
-        <div style="font-size:11px; color:var(--ink-faint); margin-top:3px;">Menunggu: ${missing.join(', ')}</div></td>
-      <td>${doc.uploaded_by_name}</td>
-      <td><a class="action" href="/sign.html?id=${doc.id}">+ Tambah TTD</a></td>
-      <td><a class="action" href="#" onclick="viewSigned('${doc.id}'); return false;">Lihat</a></td>
-      <td>${manageCellHtml(doc)}</td>`;
-    return tr;
-  }, 7);
+    const progressCell = document.createElement('td');
+    progressCell.innerHTML = progressCellHtml(doc);
+    tr.appendChild(progressCell);
 
-  renderSectionRows(signedBody, complete, 'signed', isSearching, doc => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${doc.doc_name}</td><td>${doc.doc_number}</td><td>${doc.department}</td><td>${doc.uploaded_by_name}</td>
-      <td><span class="badge signed">${doc.signature_count} TTD</span></td>
-      <td><a class="action" href="/sign.html?id=${doc.id}">+ Tambah TTD</a></td>
-      <td><a class="action" href="#" onclick="viewSigned('${doc.id}'); return false;">Lihat</a></td>
-      <td>${manageCellHtml(doc)}</td>`;
-    return tr;
-  }, 8);
+    const uploaderCell = document.createElement('td');
+    uploaderCell.textContent = doc.uploaded_by_name;
+    tr.appendChild(uploaderCell);
 
-  renderSectionRows(archivedBody, archived, 'archived', isSearching, doc => {
-    const tr = document.createElement('tr');
-    const restoreBtn = canManage(doc)
-      ? `<a class="action" href="#" onclick="archiveDoc('${doc.id}', false); return false;">Kembalikan</a>`
-      : '';
-    const deleteBtn = canDelete(doc)
-      ? `<a class="action" href="#" onclick="deleteDoc('${doc.id}'); return false;" style="color:var(--red); margin-left:10px;">Hapus</a>`
-      : '';
-    const cell = (restoreBtn + deleteBtn) || '<span style="color:var(--ink-faint);">&mdash;</span>';
-    tr.innerHTML = `<td>${doc.doc_name}</td><td>${doc.doc_number}</td><td>${doc.department}</td>
-      <td><span class="badge">${doc.signature_count} TTD</span></td>
-      <td>${cell}</td>`;
-    return tr;
-  }, 5);
+    const actionCell = document.createElement('td');
+    actionCell.innerHTML = actionCellHtml(doc);
+    tr.appendChild(actionCell);
+
+    tbody.appendChild(tr);
+  });
 }
 
 document.getElementById('searchBox').addEventListener('input', renderDocs);
@@ -470,7 +584,8 @@ async function viewSigned(docId) {
 
 checkAuth();
 loadDepartments();
-loadDocs();
+loadDirectory();
+setView('inbox');
 </script>
 </body>
 </html>

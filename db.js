@@ -81,7 +81,7 @@ let fileCache = null;
 function loadFileStore() {
   if (fileCache) return fileCache;
   if (!fs.existsSync(DATA_FILE)) {
-    fileCache = { users: defaultAdmins(), documents: [], signatures: [], driveFolders: {}, departments: [...DEFAULT_DEPARTMENTS], auditLog: [], _nextUserId: 3 };
+    fileCache = { users: defaultAdmins(), documents: [], signatures: [], driveFolders: {}, departments: [...DEFAULT_DEPARTMENTS], auditLog: [], notifications: {}, _nextUserId: 3 };
     fs.writeFileSync(DATA_FILE, JSON.stringify(fileCache, null, 2));
     console.log('Seeded default admin accounts (file) -> admin/admin123 dan dev/dev1066 (GANTI SEGERA)');
     return fileCache;
@@ -90,6 +90,7 @@ function loadFileStore() {
   if (!fileCache.driveFolders) fileCache.driveFolders = {};
   if (!fileCache.departments) fileCache.departments = [...DEFAULT_DEPARTMENTS];
   if (!fileCache.auditLog) fileCache.auditLog = [];
+  if (!fileCache.notifications) fileCache.notifications = {};
   return fileCache;
 }
 function persistFileStore() {
@@ -108,6 +109,7 @@ const K = {
   departments: `${KV_PREFIX}:departments`,    // set of department names
   driveFolders: `${KV_PREFIX}:drive_folders`, // hash: department -> folderId
   auditLog: `${KV_PREFIX}:audit_log`,         // list: JSON entries, newest first
+  notifications: `${KV_PREFIX}:notifications`, // hash: userId -> JSON array of notif (newest first, dibatasi 50)
   seeded: `${KV_PREFIX}:seeded`               // flag so default admins are seeded exactly once
 };
 
@@ -134,17 +136,28 @@ async function ensureSeeded() {
   return seedPromise;
 }
 
-// Computes, for one document: which departments have signed it at least once, and
-// whether ALL required departments (doc.allowed_departments) have signed yet -
-// "signature_count > 0" alone isn't "done" if multiple departments must sign the
-// same document (e.g. dibuat QA, diperiksa Produksi, disetujui Manager).
+// Computes, for one document: siapa saja yang WAJIB TTD dan siapa yang SUDAH TTD.
+// Ada dua cara menentukan penandatangan, dan keduanya bisa dipakai bersamaan:
+//   - per DEPARTEMEN (allowed_departments): cukup satu orang dari departemen itu TTD
+//   - per ORANG (allowed_users): orang tertentu yang di-tag, harus dia sendiri yang TTD
+// Dokumen baru dianggap "complete" hanya kalau SEMUA departemen wajib sudah terwakili
+// DAN semua orang yang di-tag sudah tandatangan - "signature_count > 0" saja tidak cukup.
 function decorateDocument(doc, allSignatures, usersById) {
   const docSigs = allSignatures.filter(s => s.document_id === doc.id);
   const signedDepartments = [...new Set(
     docSigs.map(s => s.signer_department || (usersById.get(s.signed_by) && usersById.get(s.signed_by).department) || null).filter(Boolean)
   )];
-  const requiredDepartments = (doc.allowed_departments && doc.allowed_departments.length > 0) ? doc.allowed_departments : [doc.department];
-  const isComplete = requiredDepartments.every(dept => signedDepartments.includes(dept));
+  const signedUsers = [...new Set(docSigs.map(s => s.signed_by).filter(v => v != null))];
+  const requiredUsers = (doc.allowed_users || []).filter(v => v != null);
+  // Departemen wajib hanya di-default ke departemen pemilik kalau TIDAK ada orang
+  // yang di-tag sama sekali; kalau ada tag orang, dokumen memang sengaja dibatasi
+  // ke orang-orang itu saja dan tidak boleh diam-diam melebar ke satu departemen.
+  let requiredDepartments = (doc.allowed_departments && doc.allowed_departments.length > 0)
+    ? doc.allowed_departments
+    : (requiredUsers.length > 0 ? [] : [doc.department]);
+  const isComplete =
+    requiredDepartments.every(dept => signedDepartments.includes(dept)) &&
+    requiredUsers.every(uid => signedUsers.includes(uid));
   let completion_status = 'pending'; // no signatures yet
   if (docSigs.length > 0) completion_status = isComplete ? 'complete' : 'partial';
   return {
@@ -153,6 +166,14 @@ function decorateDocument(doc, allSignatures, usersById) {
     signature_count: docSigs.length,
     required_departments: requiredDepartments,
     signed_departments: signedDepartments,
+    required_users: requiredUsers,
+    signed_users: signedUsers,
+    // Nama orang yang di-tag, supaya dashboard tidak perlu request daftar user terpisah
+    required_user_names: requiredUsers.map(uid => ({
+      id: uid,
+      full_name: usersById.has(uid) ? usersById.get(uid).full_name : `User #${uid}`,
+      signed: signedUsers.includes(uid)
+    })),
     completion_status
   };
 }
@@ -542,6 +563,60 @@ module.exports = {
   },
 
   // ---- audit trail ----
+  // ---- notifications ----
+  // Disimpan per user sebagai satu array JSON (bukan list Redis) supaya menandai
+  // "sudah dibaca" cukup satu operasi tulis, dan jumlahnya memang kecil per orang.
+  // Hanya 50 notifikasi terakhir yang disimpan; selebihnya dibuang.
+  async addNotifications(userIds, payload) {
+    await ensureSeeded();
+    const targets = [...new Set((userIds || []).filter(id => id != null))];
+    if (targets.length === 0) return;
+    const entry = { ...payload, created_at: new Date().toISOString(), read: false };
+    if (KV_CONFIGURED) {
+      for (const uid of targets) {
+        const raw = await kv.hget(K.notifications, String(uid));
+        const list = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : [];
+        list.unshift({ ...entry, id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}` });
+        if (list.length > 50) list.length = 50;
+        await kv.hset(K.notifications, { [uid]: JSON.stringify(list) });
+      }
+      return;
+    }
+    const store = loadFileStore();
+    if (!store.notifications) store.notifications = {};
+    for (const uid of targets) {
+      const list = store.notifications[uid] || [];
+      list.unshift({ ...entry, id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}` });
+      if (list.length > 50) list.length = 50;
+      store.notifications[uid] = list;
+    }
+    persistFileStore();
+  },
+  async listNotifications(userId) {
+    await ensureSeeded();
+    if (KV_CONFIGURED) {
+      const raw = await kv.hget(K.notifications, String(userId));
+      return raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : [];
+    }
+    const store = loadFileStore();
+    return (store.notifications && store.notifications[userId]) || [];
+  },
+  async markNotificationsRead(userId, ids) {
+    await ensureSeeded();
+    // ids kosong/null = tandai semua sudah dibaca
+    const mark = list => list.map(n => (!ids || ids.includes(n.id)) ? { ...n, read: true } : n);
+    if (KV_CONFIGURED) {
+      const raw = await kv.hget(K.notifications, String(userId));
+      const list = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : [];
+      await kv.hset(K.notifications, { [userId]: JSON.stringify(mark(list)) });
+      return;
+    }
+    const store = loadFileStore();
+    if (!store.notifications) store.notifications = {};
+    store.notifications[userId] = mark(store.notifications[userId] || []);
+    persistFileStore();
+  },
+
   async logAudit(entry) {
     await ensureSeeded();
     const full = { ...entry, timestamp: new Date().toISOString() };
