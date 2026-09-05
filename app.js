@@ -265,7 +265,9 @@ app.get('/api/users/directory', requireLogin, async (req, res) => {
   res.json({
     users: users
       .map(u => ({ id: u.id, username: u.username, full_name: u.full_name, department: u.department, jabatan: u.jabatan || null }))
-      .sort((a, b) => (a.department || '').localeCompare(b.department || '') || a.full_name.localeCompare(b.full_name))
+      // Urut A-Z murni berdasarkan nama, bukan dikelompokkan per departemen dulu -
+      // untuk memilih orang, mata mencari nama, bukan departemen.
+      .sort((a, b) => a.full_name.localeCompare(b.full_name, 'id'))
   });
 });
 
