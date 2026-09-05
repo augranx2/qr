@@ -276,7 +276,10 @@ button:hover { background: var(--brand-dark); }
   border: 1px solid var(--border-strong);
   padding: 7px 12px;
 }
-.secondary:hover { border-color: var(--brand); color: var(--brand-dark); }
+/* background WAJIB ditegaskan di sini. Tanpa itu, aturan umum "button:hover"
+   yang memberi latar hijau tua tetap berlaku, sehingga tombol jadi kotak hijau
+   dengan tulisan hijau tua - praktis tidak terbaca. */
+.secondary:hover { background: var(--brand-soft); border-color: var(--brand); color: var(--brand-dark); }
 
 .danger {
   background: white;
@@ -849,3 +852,16 @@ header .notif-panel a:hover, .notif-head a:hover {
   .doc-panel { padding: 0 16px 16px; }
   .doc-panel .panel-kop { margin: 0 -16px 14px; }
 }
+
+/* ---- Pusat Notifikasi (halaman penuh di sidebar) ---- */
+.notif-toolbar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+.notif-center { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.notif-center .notif-item { padding: 13px 16px; }
+.notif-center .notif-item.unread::before { left: 7px; top: 20px; }
+.notif-tag {
+  display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px;
+  font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+  background: var(--slate-soft); color: var(--slate); vertical-align: middle;
+}
+.notif-tag.new { background: var(--brand-soft); color: var(--brand-dark); }
+.notif-tag.done { background: var(--green-soft); color: var(--green); }

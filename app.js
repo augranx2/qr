@@ -285,6 +285,14 @@ app.post('/api/notifications/read', requireLogin, async (req, res) => {
   res.json({ ok: true });
 });
 
+// Hapus notifikasi (satu atau semua). Dipakai tombol "Bersihkan" di Pusat Notifikasi;
+// lonceng sendiri hanya menandai sudah dibaca, tidak menghapus riwayatnya.
+app.post('/api/notifications/clear', requireLogin, async (req, res) => {
+  const ids = Array.isArray(req.body.ids) && req.body.ids.length > 0 ? req.body.ids : null;
+  await db.clearNotifications(req.user.id, ids);
+  res.json({ ok: true });
+});
+
 // Menerjemahkan "departemen yang boleh TTD" + "orang yang di-tag" menjadi daftar id user
 // yang perlu diberi notifikasi. `excludeUserId` dipakai supaya orang tidak dapat notifikasi
 // dari perbuatannya sendiri.

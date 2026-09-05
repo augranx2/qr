@@ -617,6 +617,22 @@ module.exports = {
     persistFileStore();
   },
 
+  async clearNotifications(userId, ids) {
+    await ensureSeeded();
+    // ids kosong/null = hapus semua notifikasi milik user ini
+    const keep = list => (ids ? list.filter(n => !ids.includes(n.id)) : []);
+    if (KV_CONFIGURED) {
+      const raw = await kv.hget(K.notifications, String(userId));
+      const list = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : [];
+      await kv.hset(K.notifications, { [userId]: JSON.stringify(keep(list)) });
+      return;
+    }
+    const store = loadFileStore();
+    if (!store.notifications) store.notifications = {};
+    store.notifications[userId] = keep(store.notifications[userId] || []);
+    persistFileStore();
+  },
+
   async logAudit(entry) {
     await ensureSeeded();
     const full = { ...entry, timestamp: new Date().toISOString() };
