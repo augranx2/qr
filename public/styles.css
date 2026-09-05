@@ -415,7 +415,18 @@ a.action:hover { color: var(--brand-dark); text-decoration: underline; }
   position: sticky; top: 22px; background: var(--card);
   border: 1px solid var(--border); border-radius: 16px; padding: 16px 14px;
   box-shadow: 0 1px 2px rgba(19, 35, 31, 0.04), 0 12px 28px -18px rgba(19, 35, 31, 0.28);
+  /* Sidebar tetap di tempatnya saat konten kanan digulir. Kalau isinya lebih
+     tinggi daripada layar, bagian yang terpotong bisa digulir SENDIRI saat
+     kursor berada di atas sidebar - overscroll-behavior mencegah gulirannya
+     "menembus" ke halaman utama begitu mentok. */
+  max-height: calc(100vh - 44px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
 }
+.sidebar::-webkit-scrollbar { width: 6px; }
+.sidebar::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 999px; }
+.sidebar::-webkit-scrollbar-track { background: transparent; }
 .sidebar h3 {
   font-family: var(--font-display); font-size: 10px; letter-spacing: 0.13em;
   text-transform: uppercase; color: var(--ink-faint); margin: 20px 12px 8px; font-weight: 600;
@@ -533,7 +544,19 @@ a.action:hover { color: var(--brand-dark); text-decoration: underline; }
   padding: 13px 15px; border-bottom: 1px solid var(--border);
   font-family: var(--font-display); font-size: 13px; color: var(--ink); font-weight: 600;
 }
-.notif-head a { font-size: 11.5px; color: var(--brand-dark); cursor: pointer; font-family: var(--font-body); }
+/* Panel notifikasi berada DI DALAM <header>, sehingga tanpa penegasan ini
+   aturan "header a" ikut berlaku dan membuat teksnya jadi putih saat hover -
+   putih di atas panel putih, jadi seolah hilang. */
+header .notif-panel a, .notif-head a {
+  font-size: 11.5px; color: var(--brand-dark); cursor: pointer;
+  font-family: var(--font-body); font-weight: 600;
+  background: none; border: none; padding: 2px 4px; border-radius: 6px;
+  transform: none; text-decoration: none;
+}
+header .notif-panel a:hover, .notif-head a:hover {
+  color: var(--brand-dark); background: var(--brand-soft);
+  border-color: transparent; transform: none;
+}
 .notif-item {
   position: relative; padding: 12px 15px 12px 15px; border-bottom: 1px solid var(--border);
   cursor: pointer; transition: background 0.12s var(--ease);
@@ -629,6 +652,9 @@ a.action:hover { color: var(--brand-dark); text-decoration: underline; }
   .sidebar {
     display: flex; align-items: center; gap: 6px; padding: 8px;
     overflow-x: auto; border-radius: 14px; -webkit-overflow-scrolling: touch;
+    /* Di HP sidebar jadi baris menu horizontal, jadi pembatas tinggi dan
+       guliran vertikal untuk versi desktop dimatikan. */
+    max-height: none; overflow-y: hidden; position: static;
   }
   .sidebar::-webkit-scrollbar { display: none; }
   .sidebar h3 { display: none; }
