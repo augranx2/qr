@@ -140,17 +140,17 @@
           <div style="flex:1;">
             <label>Siapa yang harus menandatangani?</label>
             <div class="mode-tabs">
-              <button type="button" class="mode-tab active" id="tabDept" onclick="setSignerMode('dept')">Per Departemen</button>
-              <button type="button" class="mode-tab" id="tabUser" onclick="setSignerMode('user')">Tag Personil</button>
+              <button type="button" class="mode-tab active" id="tabUser" onclick="setSignerMode('user')">Tag Personil</button>
+              <button type="button" class="mode-tab" id="tabDept" onclick="setSignerMode('dept')">Per Departemen</button>
               <button type="button" class="mode-tab" id="tabBoth" onclick="setSignerMode('both')">Gabungan</button>
             </div>
 
-            <div id="deptPickerWrap">
+            <div id="deptPickerWrap" style="display:none;">
               <div id="allowedDeptCheckboxes" class="dept-checkbox-grid"></div>
               <div class="dept-hint">Semua personil dari departemen yang dicentang bisa melihat dan menandatangani dokumen ini. Cukup satu orang per departemen agar departemen itu dihitung sudah TTD.</div>
             </div>
 
-            <div id="userPickerWrap" style="display:none;">
+            <div id="userPickerWrap">
               <div class="picker-search">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                 <input type="text" id="userSearch" placeholder="Cari nama atau departemen personil...">
@@ -284,7 +284,9 @@ let currentUser = null;
 let allDocsCache = [];
 let directoryCache = [];
 let currentView = 'inbox';
-let signerMode = 'dept';
+// Tag Personil jadi mode default: memilih orang tertentu lebih sering dipakai
+// dan lebih tegas batasannya daripada membuka akses ke seluruh departemen.
+let signerMode = 'user';
 
 const VIEWS = {
   inbox:    { title: 'Perlu TTD Saya',  desc: 'Dokumen yang menunggu tanda tangan Anda - baik karena departemen Anda diminta TTD, maupun karena Anda di-tag langsung.' },
@@ -868,6 +870,7 @@ async function viewSigned(docId) {
 checkAuth();
 loadDepartments();
 loadDirectory();
+setSignerMode('user');
 setView('inbox');
 </script>
 </body>
