@@ -860,11 +860,13 @@ async function deleteDoc(docId) {
   loadDocs();
 }
 
+// "Lihat" membuka file di Google Drive - tapi tautannya diambil lewat endpoint
+// ber-login yang memeriksa hak akses dokumen, bukan dari halaman verifikasi publik.
 async function viewSigned(docId) {
-  const res = await fetch(`/api/documents/${docId}/signature`);
+  const res = await fetch(`/api/documents/${docId}/drive-link`);
   const data = await res.json();
   if (!res.ok) { alert(data.error); return; }
-  window.location.href = `/verify/${data.signatureId}`;
+  window.open(data.url, '_blank', 'noopener');
 }
 
 checkAuth();

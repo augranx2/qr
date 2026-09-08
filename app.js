@@ -136,7 +136,13 @@ app.use('/uploads', (req, res, next) => {
   if (!getUserFromRequest(req)) return res.status(401).send('Unauthorized');
   next();
 }, express.static(UPLOAD_DIR));
-app.use('/signed', express.static(SIGNED_DIR)); // signed docs are viewable via the public verification page
+// Folder dokumen ber-TTD TIDAK LAGI terbuka untuk umum. Sebelumnya siapa pun yang
+// tahu nama filenya bisa mengunduhnya tanpa login - dan nama file itu ikut terkirim
+// lewat endpoint verifikasi publik. Sekarang wajib login.
+app.use('/signed', (req, res, next) => {
+  if (!getUserFromRequest(req)) return res.status(401).send('Harus login untuk mengakses dokumen ini');
+  next();
+}, express.static(SIGNED_DIR));
 
 // ---------- Multer upload config ----------
 const upload = multer({
@@ -957,11 +963,56 @@ app.get('/api/audit-log/export', requireLogin, requireAuditAccess, async (req, r
   res.send('\uFEFF' + csv);
 });
 
-// ---------- PUBLIC VERIFICATION PAGE (data endpoint) ----------
+// ---------- HALAMAN VERIFIKASI PUBLIK (endpoint data) ----------
+// Endpoint ini TERBUKA untuk siapa saja - QR tercetak permanen di dokumen, jadi
+// siapa pun yang pernah memegang atau memfoto dokumen bisa membukanya.
+//
+// Karena itu jawabannya sengaja dibatasi pada hal-hal yang SUDAH tercetak di
+// lembar yang sedang dipegang orang itu: nama & nomor dokumen, penandatangan,
+// dan waktu TTD. Link Google Drive, nama file, dan tipe file TIDAK dikirim -
+// menyembunyikan tombolnya saja tidak cukup, karena siapa pun bisa membuka
+// endpoint ini langsung dan membaca JSON-nya.
+//
+// Hanya SATU tanda tangan yang ditampilkan, yaitu milik QR yang discan - daftar
+// lengkap penandatangan akan mengungkap struktur persetujuan internal ke luar.
 app.get('/api/verify/:signatureId', async (req, res) => {
   const sig = await db.getSignatureWithDetails(req.params.signatureId);
   if (!sig) return res.status(404).json({ error: 'Tanda tangan tidak ditemukan atau tidak valid' });
-  res.json({ signature: sig });
+  res.json({
+    signature: {
+      id: sig.id,
+      doc_name: sig.doc_name,
+      doc_number: sig.doc_number,
+      department: sig.department,
+      signer_name: sig.signer_name,
+      signer_department: sig.signer_department,
+      signer_jabatan: sig.signer_jabatan,
+      signed_at: sig.signed_at
+    }
+  });
+});
+
+// Halaman verifikasi memakai ini untuk memunculkan tautan internal ("Tambah TTD")
+// bagi pengunjung yang kebetulan sudah login. ID dokumen sengaja TIDAK ikut dalam
+// jawaban publik, jadi harus diminta lewat endpoint ber-login seperti ini.
+app.get('/api/signatures/:signatureId/document', requireLogin, async (req, res) => {
+  const sig = await db.getSignatureWithDetails(req.params.signatureId);
+  if (!sig) return res.status(404).json({ error: 'Tanda tangan tidak ditemukan' });
+  const doc = await db.getDocumentById(sig.document_id);
+  if (!doc || !canAccessDocument(req.user, doc)) return res.status(403).json({ error: 'Tidak punya akses' });
+  res.json({ document_id: doc.id });
+});
+
+// Link Google Drive hanya diberikan kepada pengguna yang sudah login DAN berhak
+// atas dokumen itu (aturan akses yang sama dengan dashboard). Dipakai tombol
+// "Lihat" di daftar dokumen.
+app.get('/api/documents/:id/drive-link', requireLogin, async (req, res) => {
+  const doc = await db.getDocumentById(req.params.id);
+  if (!doc) return res.status(404).json({ error: 'Dokumen tidak ditemukan' });
+  if (!canAccessDocument(req.user, doc)) return res.status(403).json({ error: 'Anda tidak memiliki akses ke dokumen ini' });
+  if (doc.drive_view_link) return res.json({ url: doc.drive_view_link });
+  if (doc.signed_filename) return res.json({ url: `/signed/${doc.signed_filename}` });
+  res.status(404).json({ error: 'Dokumen ini belum ditandatangani' });
 });
 
 app.get('/verify/:signatureId', (req, res) => {

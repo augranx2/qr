@@ -82,15 +82,17 @@
 const parts = window.location.pathname.split('/');
 const signatureId = parts[parts.length - 1];
 
-async function checkInternalNav(documentId) {
+// ID dokumen tidak lagi dikirim ke pengunjung publik, jadi diminta terpisah lewat
+// endpoint ber-login. Pengunjung umum akan menerima 401/403 di sini dan navigasi
+// internalnya tetap tersembunyi - itu memang perilaku yang diinginkan.
+async function checkInternalNav() {
   try {
-    const res = await fetch('/api/me');
+    const res = await fetch(`/api/signatures/${signatureId}/document`);
+    if (!res.ok) return;
     const data = await res.json();
-    if (data.user) {
-      document.getElementById('internalNav').style.display = 'flex';
-      document.getElementById('signAgainLink').href = `/sign.html?id=${documentId}`;
-    }
-  } catch (e) { /* not logged in / public viewer - leave nav hidden */ }
+    document.getElementById('internalNav').style.display = 'flex';
+    document.getElementById('signAgainLink').href = `/sign.html?id=${data.document_id}`;
+  } catch (e) { /* pengunjung publik - biarkan navigasi tersembunyi */ }
 }
 
 async function load() {
@@ -102,11 +104,8 @@ async function load() {
     return;
   }
   const s = data.signature;
-  checkInternalNav(s.document_id);
+  checkInternalNav();
   const signedDate = new Date(s.signed_at).toLocaleString('id-ID', { dateStyle: 'long', timeStyle: 'short' });
-  const fileLinkHtml = s.drive_view_link
-    ? `<a class="download" href="${s.drive_view_link}" target="_blank">Buka Dokumen di Google Drive &rarr;</a>`
-    : (s.signed_filename ? `<a class="download" href="/signed/${s.signed_filename}" target="_blank">Lihat Dokumen &rarr;</a>` : '');
   const signerLine = s.signer_jabatan
     ? `${s.signer_name} &mdash; ${s.signer_jabatan}, ${s.signer_department || '-'}`
     : `${s.signer_name} (${s.signer_department || '-'})`;
@@ -118,7 +117,7 @@ async function load() {
     <div class="field"><label>Departemen</label><span>${s.department}</span></div>
     <div class="field"><label>Ditandatangani oleh</label><span>${signerLine}</span></div>
     <div class="field"><label>Waktu Tanda Tangan</label><span>${signedDate}</span></div>
-    ${fileLinkHtml}
+    <p class="verify-note">Halaman ini hanya membuktikan keaslian tanda tangan di atas. Isi dokumen tidak ditampilkan di sini &mdash; untuk membukanya, personil PT REMS dapat masuk ke aplikasi TTD Elektronik.</p>
   `;
 }
 load();
