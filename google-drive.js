@@ -117,6 +117,58 @@ async function updateSignedDocument({ fileId, filePath, mimeType }) {
  * anything being left over on local disk from a previous request - the file always
  * comes fresh from Drive, which is the durable source of truth.
  */
+/**
+ * Membuat sesi unggah "resumable" ke Google Drive dan mengembalikan URL sesinya.
+ *
+ * Dipakai untuk berkas besar: browser mengunggah langsung ke URL ini, sehingga
+ * datanya TIDAK melewati server aplikasi. Ini menghindari batas ukuran body
+ * request pada platform hosting (Vercel ~4,5 MB) yang menolak berkas besar
+ * sebelum sampai ke kode aplikasi.
+ *
+ * URL sesi yang dikembalikan sudah membawa kredensialnya sendiri dan berlaku
+ * singkat, jadi browser tidak perlu (dan tidak pernah) menerima token akses
+ * Google milik aplikasi.
+ */
+async function createResumableUploadSession({ fileName, mimeType, department, category }) {
+  const folderId = category
+    ? await getOrCreateCategoryFolder(department, category)
+    : await getOrCreateDepartmentFolder(department);
+
+  const client = getClient();
+  const { token } = await client.getAccessToken();
+  if (!token) throw new Error('Gagal memperoleh access token Google Drive');
+
+  const res = await fetch(
+    'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,webViewLink',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json; charset=UTF-8',
+        'X-Upload-Content-Type': mimeType
+      },
+      body: JSON.stringify({ name: fileName, parents: [folderId] })
+    }
+  );
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(`Gagal membuat sesi upload Drive (${res.status}): ${detail.slice(0, 200)}`);
+  }
+  const uploadUrl = res.headers.get('location');
+  if (!uploadUrl) throw new Error('Google Drive tidak mengembalikan URL sesi upload');
+  return { uploadUrl, folderId };
+}
+
+/**
+ * Mengambil metadata satu berkas. Dipakai untuk memastikan berkas yang diklaim
+ * browser memang benar-benar ada di Drive sebelum dicatat ke basis data.
+ */
+async function getFileMeta(fileId) {
+  const drive = getDrive();
+  const res = await drive.files.get({ fileId, fields: 'id, name, size, mimeType, webViewLink, parents' });
+  return res.data;
+}
+
 async function downloadFileBuffer(fileId) {
   const drive = getDrive();
   const res = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'arraybuffer' });
@@ -142,4 +194,7 @@ async function deleteFile(fileId) {
   }
 }
 
-module.exports = { isConfigured, uploadSignedDocument, updateSignedDocument, downloadFileBuffer, deleteFile };
+module.exports = {
+  isConfigured, uploadSignedDocument, updateSignedDocument, downloadFileBuffer, deleteFile,
+  createResumableUploadSession, getFileMeta
+};

@@ -566,6 +566,162 @@ app.post('/api/documents', requireLogin, upload.single('file'), async (req, res)
   }
 });
 
+// ---------------------------------------------------------------------------
+// UPLOAD BERKAS BESAR - langsung dari browser ke Google Drive
+//
+// Jalur upload biasa (POST /api/documents) tetap dipakai untuk berkas kecil dan
+// TIDAK diubah sama sekali. Jalur di bawah ini hanya dipakai bila berkasnya
+// melebihi batas body request platform, karena berkas sebesar itu ditolak Vercel
+// sebelum sampai ke aplikasi.
+//
+// Alurnya tiga langkah:
+//   1. /upload-session  - server menyiapkan sesi upload di Drive, mengembalikan
+//                         URL sesi + token bertanda tangan berisi metadata dokumen
+//   2. browser           - mengirim isi berkas LANGSUNG ke URL sesi Google
+//   3. /finalize         - server memverifikasi berkas benar ada di Drive, lalu
+//                         mencatat dokumennya ke basis data
+//
+// Metadata dokumen dititipkan dalam token bertanda tangan (bukan dikirim ulang
+// apa adanya oleh browser) supaya isian seperti departemen tidak bisa diganti di
+// antara langkah 1 dan 3.
+// ---------------------------------------------------------------------------
+const UPLOAD_SESSION_TTL = '30m';
+
+app.post('/api/documents/upload-session', requireLogin, async (req, res) => {
+  try {
+    if (!gdrive.isConfigured()) {
+      return res.status(503).json({ error: 'Google Drive belum dikonfigurasi, upload berkas besar tidak tersedia' });
+    }
+    const { doc_name, doc_number, department, file_name, mime_type, file_size } = req.body;
+    if (!doc_name || !doc_number || !department || !file_name) {
+      return res.status(400).json({ error: 'Data dokumen belum lengkap' });
+    }
+    const ext = path.extname(file_name).toLowerCase();
+    if (!['.pdf', '.jpg', '.jpeg', '.png'].includes(ext)) {
+      return res.status(400).json({ error: 'Hanya file PDF, JPG, atau PNG yang diperbolehkan' });
+    }
+    if (Number(file_size) > 25 * 1024 * 1024) {
+      return res.status(400).json({ error: 'Ukuran file melebihi batas 25 MB' });
+    }
+
+    const mimeType = ext === '.pdf' ? 'application/pdf' : (ext === '.png' ? 'image/png' : 'image/jpeg');
+    const { uploadUrl } = await gdrive.createResumableUploadSession({
+      fileName: `${doc_number} - ${doc_name}${ext}`,
+      mimeType: mime_type || mimeType,
+      department,
+      category: 'File Asli'
+    });
+
+    let allowedDepartments = [];
+    try {
+      const parsed = JSON.parse(req.body.allowed_departments || '[]');
+      if (Array.isArray(parsed)) allowedDepartments = parsed.filter(Boolean);
+    } catch (e) { /* input tidak valid - pakai default di bawah */ }
+    let allowedUsers = [];
+    try {
+      const parsed = JSON.parse(req.body.allowed_users || '[]');
+      if (Array.isArray(parsed)) allowedUsers = parsed.map(Number).filter(n => Number.isFinite(n));
+    } catch (e) { /* idem */ }
+    if (allowedDepartments.length === 0 && allowedUsers.length === 0) allowedDepartments = [department];
+
+    const sessionToken = jwt.sign(
+      {
+        kind: 'upload_session', doc_name, doc_number, department,
+        file_type: ext === '.pdf' ? 'pdf' : 'image',
+        original_filename: file_name,
+        allowed_departments: allowedDepartments, allowed_users: allowedUsers,
+        uploader: req.user.id
+      },
+      JWT_SECRET,
+      { expiresIn: UPLOAD_SESSION_TTL }
+    );
+    res.json({ uploadUrl, sessionToken });
+  } catch (e) {
+    console.error('Gagal menyiapkan sesi upload:', e.message);
+    res.status(500).json({ error: 'Gagal menyiapkan sesi upload ke Google Drive' });
+  }
+});
+
+app.post('/api/documents/finalize', requireLogin, async (req, res) => {
+  try {
+    const { sessionToken, driveFileId } = req.body;
+    if (!sessionToken || !driveFileId) return res.status(400).json({ error: 'Data sesi upload tidak lengkap' });
+
+    let session;
+    try {
+      session = jwt.verify(sessionToken, JWT_SECRET);
+    } catch (e) {
+      return res.status(400).json({ error: 'Sesi upload sudah kedaluwarsa. Silakan ulangi upload.' });
+    }
+    if (session.kind !== 'upload_session' || session.uploader !== req.user.id) {
+      return res.status(403).json({ error: 'Sesi upload tidak sah' });
+    }
+
+    // Pastikan berkas memang benar-benar ada di Drive - jangan percaya begitu saja
+    // pada id yang dikirim browser.
+    let meta;
+    try {
+      meta = await gdrive.getFileMeta(driveFileId);
+    } catch (e) {
+      return res.status(400).json({ error: 'Berkas tidak ditemukan di Google Drive. Silakan ulangi upload.' });
+    }
+
+    // page_width dipakai halaman TTD untuk menghitung perkiraan ukuran QR dalam cm.
+    // Berkasnya diambil dari Drive (server ke Google, tidak melewati batas platform).
+    let page_width = null, page_height = null;
+    if (session.file_type === 'pdf') {
+      try {
+        const buf = await gdrive.downloadFileBuffer(driveFileId);
+        const pdfDoc = await PDFDocument.load(buf);
+        const firstPage = pdfDoc.getPages()[0];
+        page_width = firstPage.getWidth();
+        page_height = firstPage.getHeight();
+      } catch (e) {
+        console.error('Gagal membaca dimensi halaman PDF:', e.message);
+      }
+    }
+
+    const id = uuidv4();
+    await db.createDocument({
+      id,
+      doc_name: session.doc_name, doc_number: session.doc_number, department: session.department,
+      file_type: session.file_type,
+      original_filename: session.original_filename,
+      stored_filename: null, // berkas tidak pernah singgah di server
+      uploaded_by: req.user.id,
+      allowed_departments: session.allowed_departments,
+      allowed_users: session.allowed_users,
+      page_width, page_height,
+      drive_original_file_id: driveFileId,
+      drive_original_view_link: meta.webViewLink || null
+    });
+
+    await db.logAudit({
+      type: 'upload_document', user_id: req.user.id, username: req.user.username, full_name: req.user.full_name,
+      document_id: id, doc_name: session.doc_name, doc_number: session.doc_number
+    });
+
+    try {
+      const targets = await resolveNotificationTargets({
+        departments: session.allowed_departments, userIds: session.allowed_users, excludeUserId: req.user.id
+      });
+      await db.addNotifications(targets, {
+        type: 'sign_request',
+        title: 'Dokumen baru menunggu TTD Anda',
+        body: `${session.doc_number} — ${session.doc_name}, diupload oleh ${req.user.full_name}`,
+        document_id: id
+      });
+    } catch (e) {
+      console.error('Gagal mengirim notifikasi upload:', e.message);
+    }
+
+    res.json({ id, file_type: session.file_type, driveUploaded: true });
+  } catch (e) {
+    console.error('Gagal menyelesaikan upload:', e.message);
+    res.status(500).json({ error: 'Gagal mencatat dokumen' });
+  }
+});
+
 // List documents - only shows documents the requesting user's department is allowed to
 // see (admins and the original uploader always see everything they're involved with)
 app.get('/api/documents', requireLogin, async (req, res) => {
@@ -611,6 +767,12 @@ app.get('/api/documents/:id', requireLogin, async (req, res) => {
       // Halaman sign.html memakai ini untuk menonaktifkan tombol TTD lebih awal,
       // daripada membiarkan user menempel QR lalu baru ditolak server.
       can_sign: canSignDocument(req.user, doc),
+      // Ukuran stempel TTD pertama - penandatangan berikutnya mengikuti ukuran ini
+      locked_qr_size: (() => {
+        if (allSigs.length === 0) return null;
+        const first = allSigs.slice().sort((a, b) => new Date(a.signed_at) - new Date(b.signed_at))[0];
+        return first && first.qr_size != null ? first.qr_size : null;
+      })(),
       completion_status: allSigs.length === 0 ? 'pending' : (isComplete ? 'complete' : 'partial')
     }
   });
@@ -638,6 +800,7 @@ app.get('/api/documents/:id/file', requireLogin, async (req, res) => {
     // Fallback for local/office-server use without Drive configured
     const baseDir = doc.signed_filename ? SIGNED_DIR : UPLOAD_DIR;
     const filename = doc.signed_filename || doc.stored_filename;
+    if (!filename) return res.status(404).send('Berkas dokumen tidak tersedia');
     return res.sendFile(path.join(baseDir, filename));
   } catch (e) {
     console.error('Gagal memuat file dokumen:', e.message);
@@ -659,9 +822,22 @@ app.post('/api/documents/:id/sign', requireLogin, async (req, res) => {
       });
     }
 
-    const { qr_x, qr_y, qr_size, page_number } = req.body;
+    let { qr_x, qr_y, qr_size, page_number } = req.body;
     if (qr_x == null || qr_y == null || qr_size == null) {
       return res.status(400).json({ error: 'Posisi QR belum ditentukan' });
+    }
+
+    // Ukuran stempel dikunci mengikuti TTD PERTAMA pada dokumen ini, supaya semua
+    // tanda tangan pada satu dokumen tampil seragam. Penandatangan berikutnya tetap
+    // bebas menentukan POSISI, tapi ukurannya diabaikan dan diganti ukuran awal.
+    // Penegakan dilakukan di server, bukan hanya di antarmuka, agar tetap berlaku
+    // walau permintaan dikirim langsung ke API.
+    const existingSigs = await db.getAllSignaturesForDocument(doc.id);
+    if (existingSigs.length > 0) {
+      const firstSig = existingSigs
+        .slice()
+        .sort((a, b) => new Date(a.signed_at) - new Date(b.signed_at))[0];
+      if (firstSig && firstSig.qr_size != null) qr_size = firstSig.qr_size;
     }
 
     const signatureId = uuidv4();
@@ -687,7 +863,11 @@ app.post('/api/documents/:id/sign', requireLogin, async (req, res) => {
       const baseDir = doc.signed_filename ? SIGNED_DIR : UPLOAD_DIR;
       sourceBytes = fs.readFileSync(path.join(baseDir, baseFilename));
     }
-    const outFilename = `${signatureId}${path.extname(doc.stored_filename)}`;
+    // Dokumen yang diupload langsung ke Drive tidak punya stored_filename, jadi
+    // ekstensinya diambil dari nama berkas asli (atau disimpulkan dari tipenya).
+    const sourceExt = path.extname(doc.stored_filename || doc.original_filename || '')
+      || (doc.file_type === 'pdf' ? '.pdf' : '.png');
+    const outFilename = `${signatureId}${sourceExt}`;
     const outPath = path.join(SIGNED_DIR, outFilename);
 
     // Waktu TTD dihitung sekali di sini lalu dipakai untuk DUA hal: teks yang tercetak

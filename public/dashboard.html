@@ -131,7 +131,7 @@
             <select id="department" required></select>
           </div>
           <div>
-            <label>File (PDF / JPG / PNG)</label>
+            <label>File (PDF / JPG / PNG &mdash; maks. 25 MB)</label>
             <input type="file" id="file" accept=".pdf,.jpg,.jpeg,.png" required>
           </div>
         </div>
@@ -565,6 +565,56 @@ function clearSelectedUsers() {
 }
 document.getElementById('userSearch').addEventListener('input', renderUserPicker);
 
+// Berkas di bawah ambang ini dikirim lewat server seperti biasa. Di atasnya,
+// berkas dikirim LANGSUNG dari browser ke Google Drive, karena platform hosting
+// menolak body request yang lebih besar dari ~4,5 MB sebelum sampai ke aplikasi.
+const DIRECT_UPLOAD_THRESHOLD = 4 * 1024 * 1024;
+
+// Mengirim berkas ke URL sesi Drive. Memakai XHR (bukan fetch) semata-mata karena
+// hanya XHR yang bisa melaporkan progres unggahan.
+function putToDrive(uploadUrl, file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', uploadUrl);
+    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+    });
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try { resolve(JSON.parse(xhr.responseText)); }
+        catch (e) { reject(new Error('Jawaban Google Drive tidak dapat dibaca')); }
+      } else {
+        reject(new Error(`Google Drive menolak upload (kode ${xhr.status})`));
+      }
+    };
+    xhr.onerror = () => reject(new Error('Koneksi ke Google Drive terputus saat mengupload.'));
+    xhr.send(file);
+  });
+}
+
+async function uploadDirectToDrive(meta, file, onProgress, onStage) {
+  onStage('Menyiapkan upload...');
+  const sessionRes = await fetch('/api/documents/upload-session', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...meta, file_name: file.name, mime_type: file.type, file_size: file.size })
+  });
+  const session = await sessionRes.json();
+  if (!sessionRes.ok) throw new Error(session.error || 'Gagal menyiapkan upload');
+
+  onStage('Mengupload ke Google Drive...');
+  const uploaded = await putToDrive(session.uploadUrl, file, onProgress);
+
+  onStage('Mencatat dokumen...');
+  const finalRes = await fetch('/api/documents/finalize', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionToken: session.sessionToken, driveFileId: uploaded.id })
+  });
+  const data = await finalRes.json();
+  if (!finalRes.ok) throw new Error(data.error || 'Gagal mencatat dokumen');
+  return data;
+}
+
 function uploadDocumentWithProgress(formData, onProgress) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -603,6 +653,12 @@ document.getElementById('uploadForm').addEventListener('submit', async (e) => {
     return;
   }
 
+  const chosen = document.getElementById('file').files[0];
+  if (chosen && chosen.size > 25 * 1024 * 1024) {
+    showMsg(msgEl, `Ukuran file ${(chosen.size / 1024 / 1024).toFixed(1)} MB melebihi batas 25 MB.`, 'error');
+    return;
+  }
+
   const docName = document.getElementById('doc_name').value;
   const docNumber = document.getElementById('doc_number').value;
   const fd = new FormData();
@@ -621,11 +677,26 @@ document.getElementById('uploadForm').addEventListener('submit', async (e) => {
   progressStatus.textContent = 'Mengupload...';
 
   try {
-    await uploadDocumentWithProgress(fd, (percent) => {
+    const onProgress = (percent) => {
       progressBar.style.width = percent + '%';
       progressPercent.textContent = percent + '%';
-      if (percent >= 100) progressStatus.textContent = 'Memproses di server...';
-    });
+    };
+    if (chosen && chosen.size > DIRECT_UPLOAD_THRESHOLD) {
+      await uploadDirectToDrive(
+        {
+          doc_name: docName, doc_number: docNumber,
+          department: document.getElementById('department').value,
+          allowed_departments: JSON.stringify(allowedDepartments),
+          allowed_users: JSON.stringify(allowedUsers)
+        },
+        chosen, onProgress, (stage) => { progressStatus.textContent = stage; }
+      );
+    } else {
+      await uploadDocumentWithProgress(fd, (percent) => {
+        onProgress(percent);
+        if (percent >= 100) progressStatus.textContent = 'Memproses di server...';
+      });
+    }
     // Perkiraan jumlah penerima notifikasi, hanya untuk ditampilkan di popup
     const deptTargets = directoryCache.filter(u => allowedDepartments.includes(u.department)).map(u => u.id);
     const notified = new Set([...deptTargets, ...allowedUsers]);

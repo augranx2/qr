@@ -31,6 +31,14 @@
      halaman oleh browser, dan kotaknya tidak bisa digeser di HP.
      pointer-events: none membuat semua sentuhan diarahkan ke kotak induknya. */
   .qr-box * { touch-action: none; pointer-events: none; }
+  .size-lock-note {
+    margin-top: 8px; padding: 8px 11px; border-radius: 8px;
+    background: var(--brand-soft); color: var(--brand-dark);
+    font-size: 11.5px; line-height: 1.5;
+  }
+  input[type="range"]:disabled, input[type="number"]:disabled {
+    opacity: 0.5; cursor: not-allowed;
+  }
   .qr-box:hover { box-shadow: 0 0 0 4px rgba(11, 110, 92, 0.1); }
   .stamp-qr {
     box-sizing: border-box; border: 1px solid var(--brand-dark); background: rgba(11, 110, 92, 0.09);
@@ -94,6 +102,7 @@
         </div>
       </div>
       <div class="qr-size-physical" id="qrSizePhysical"></div>
+      <div class="size-lock-note" id="sizeLockNote" style="display:none;"></div>
       <div class="hint">Kotak putus-putus di dokumen adalah <b>ukuran asli stempel TTE</b> yang akan tercetak: QR di atas, lalu nama Anda dan tanggal/jam TTD. Garis putus-putus dan latarnya hanya panduan di layar &mdash; di dokumen hanya QR dan tulisannya yang muncul, sisanya transparan. Geser ke posisi yang diinginkan, sesuaikan ukuran (bisa juga ketik angka persen langsung supaya ukurannya seragam tiap kali minta TTD ke orang lain), lalu klik Tandatangani. Setelah tersimpan, Anda bisa langsung menempel QR lagi di posisi/halaman lain tanpa perlu kembali ke Dashboard dulu.</div>
       <div class="msg" id="signMsg" style="margin-top:10px;"></div>
       <button class="primary" id="signBtn" onclick="submitSignature()">Tandatangani Dokumen</button>
@@ -206,6 +215,22 @@ async function loadDoc(isInitial) {
      ${req.length ? `<div><b>Wajib TTD dari:</b> ${req.join(', ')}</div>` : ''}
      ${taggedLine}
      ${ttdInfo}`;
+
+  // Ukuran stempel dikunci mengikuti TTD pertama pada dokumen ini, supaya semua
+  // tanda tangan tampil seragam. Posisi tetap bebas diatur.
+  if (doc.locked_qr_size != null) {
+    const pct = Math.round(doc.locked_qr_size * 1000) / 10;
+    qrFrac.size = doc.locked_qr_size;
+    const slider = document.getElementById('qrSize');
+    const number = document.getElementById('qrSizeNumber');
+    slider.value = pct; slider.disabled = true;
+    number.value = pct; number.disabled = true;
+    document.getElementById('sizeLockNote').style.display = 'block';
+    document.getElementById('sizeLockNote').textContent =
+      `Ukuran dikunci ${pct}% mengikuti tanda tangan pertama pada dokumen ini, agar semua TTD tampil seragam. Anda tetap bisa mengatur posisinya.`;
+    updateQrBox();
+    updatePhysicalSize();
+  }
 
   // Kalau server bilang kita tidak berhak TTD, matikan tombolnya sekarang juga daripada
   // membiarkan orang menempel QR lalu ditolak setelah semua pekerjaan itu selesai.
