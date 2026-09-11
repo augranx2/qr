@@ -609,7 +609,10 @@ app.post('/api/documents/upload-session', requireLogin, async (req, res) => {
       fileName: `${doc_number} - ${doc_name}${ext}`,
       mimeType: mime_type || mimeType,
       department,
-      category: 'File Asli'
+      category: 'File Asli',
+      // Asal (origin) browser diteruskan ke Google agar URL sesi yang dihasilkan
+      // mengizinkan upload langsung dari halaman ini.
+      origin: req.headers.origin || BASE_URL
     });
 
     let allowedDepartments = [];

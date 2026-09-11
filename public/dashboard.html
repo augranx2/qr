@@ -588,7 +588,10 @@ function putToDrive(uploadUrl, file, onProgress) {
         reject(new Error(`Google Drive menolak upload (kode ${xhr.status})`));
       }
     };
-    xhr.onerror = () => reject(new Error('Koneksi ke Google Drive terputus saat mengupload.'));
+    xhr.onerror = () => reject(new Error(
+      'Upload ke Google Drive ditolak browser (kemungkinan kebijakan CORS). ' +
+      'Coba muat ulang halaman; bila tetap gagal, laporkan ke admin sistem.'
+    ));
     xhr.send(file);
   });
 }

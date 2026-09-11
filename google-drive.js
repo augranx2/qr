@@ -129,7 +129,7 @@ async function updateSignedDocument({ fileId, filePath, mimeType }) {
  * singkat, jadi browser tidak perlu (dan tidak pernah) menerima token akses
  * Google milik aplikasi.
  */
-async function createResumableUploadSession({ fileName, mimeType, department, category }) {
+async function createResumableUploadSession({ fileName, mimeType, department, category, origin }) {
   const folderId = category
     ? await getOrCreateCategoryFolder(department, category)
     : await getOrCreateDepartmentFolder(department);
@@ -138,17 +138,20 @@ async function createResumableUploadSession({ fileName, mimeType, department, ca
   const { token } = await client.getAccessToken();
   if (!token) throw new Error('Gagal memperoleh access token Google Drive');
 
+  // Header Origin WAJIB disertakan saat sesi dibuat. Google memakainya untuk
+  // menyiapkan izin CORS pada URL sesi yang dihasilkan; tanpa ini, permintaan PUT
+  // dari browser akan ditolak di tahap preflight dan tampil sebagai "koneksi
+  // terputus" - padahal sebenarnya diblokir kebijakan lintas-asal.
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    'Content-Type': 'application/json; charset=UTF-8',
+    'X-Upload-Content-Type': mimeType
+  };
+  if (origin) headers.Origin = origin;
+
   const res = await fetch(
     'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,webViewLink',
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json; charset=UTF-8',
-        'X-Upload-Content-Type': mimeType
-      },
-      body: JSON.stringify({ name: fileName, parents: [folderId] })
-    }
+    { method: 'POST', headers, body: JSON.stringify({ name: fileName, parents: [folderId] }) }
   );
   if (!res.ok) {
     const detail = await res.text();

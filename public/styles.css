@@ -502,6 +502,18 @@ a.action:hover { color: var(--brand-dark); text-decoration: underline; }
 }
 .side-link.cta .side-ico { color: var(--brand); opacity: 1; }
 .side-link.cta:hover { background: rgba(11, 110, 92, 0.13); border-style: solid; }
+/* Aturan .cta di atas dideklarasikan setelah .side-link.active, sehingga latar
+   hijau mudanya menimpa blok hijau pekat milik menu aktif - akibatnya tulisan
+   jadi putih di atas latar terang dan nyaris tak terbaca. */
+.side-link.cta.active {
+  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-dark) 100%);
+  border: 1px solid var(--brand-dark); color: #FFFFFF;
+}
+.side-link.cta.active:hover {
+  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-dark) 100%);
+  border-style: solid;
+}
+.side-link.cta.active .side-ico { color: #FFFFFF; }
 .side-link.cta { font-weight: 600; }
 
 .side-user {
