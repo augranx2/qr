@@ -896,7 +896,19 @@ header .notif-panel a:hover, .notif-head a:hover {
   overflow-x: auto; -webkit-overflow-scrolling: touch;
   margin: 0 -2px; padding-bottom: 4px;
 }
-.table-scroll table { min-width: 720px; }
+.table-scroll table { min-width: 1120px; }
+/* Kolom Aksi berisi beberapa tombol berdampingan. Tanpa nowrap, browser
+   memampatkan kolom ini sampai tombolnya terpotong alih-alih melebarkan tabel,
+   sehingga guliran mendatar tidak pernah muncul. */
+.table-scroll .actions-cell { white-space: nowrap; }
+.table-scroll .actions-cell button { display: inline-block; }
+/* Scrollbar dibuat selalu terlihat, bukan hanya saat disentuh kursor - kalau
+   tersembunyi, orang tidak tahu masih ada kolom di sebelah kanan. */
+.table-scroll { scrollbar-width: thin; scrollbar-color: #B9C7C2 transparent; }
+.table-hint {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11.5px; color: var(--ink-faint); margin: 2px 0 8px;
+}
 .table-scroll::-webkit-scrollbar { height: 8px; }
 .table-scroll::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 999px; }
 .table-scroll::-webkit-scrollbar-track { background: var(--paper); border-radius: 999px; }
