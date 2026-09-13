@@ -425,8 +425,21 @@ app.delete('/api/users/:id', requireLogin, requireAdmin, async (req, res) => {
 // Admin-only: edit an existing user's full name, jabatan, department, or role
 app.patch('/api/users/:id', requireLogin, requireAdmin, async (req, res) => {
   try {
-    const { full_name, jabatan, department, role } = req.body;
-    await db.updateUser(Number(req.params.id), { full_name, jabatan, department, role });
+    const { full_name, jabatan, department, role, username } = req.body;
+    const target = Number(req.params.id);
+    const before = await db.getUserById(target);
+    await db.updateUser(target, { full_name, jabatan, department, role, username });
+
+    // Perubahan username dicatat ke audit trail beserta nama lamanya - entri audit
+    // yang sudah ada tetap menyimpan username lama, jadi catatan ini yang
+    // menghubungkan keduanya saat ditelusuri.
+    if (before && username && String(username).trim().toLowerCase() !== before.username) {
+      await db.logAudit({
+        type: 'change_username', user_id: req.user.id, username: req.user.username,
+        full_name: req.user.full_name,
+        doc_name: `${before.username} → ${String(username).trim().toLowerCase()} (${before.full_name})`
+      });
+    }
     res.json({ ok: true });
   } catch (e) {
     res.status(400).json({ error: e.message });
@@ -1147,7 +1160,8 @@ app.get('/api/audit-log/export', requireLogin, requireAuditAccess, async (req, r
     login: 'Login', logout: 'Logout', upload_document: 'Upload Dokumen',
     sign_document: 'Tanda Tangan', change_password: 'Ganti Password',
     archive_document: 'Arsipkan Dokumen', unarchive_document: 'Kembalikan dari Arsip',
-    delete_document: 'Hapus Dokumen', session_expired: 'Sesi Berakhir'
+    delete_document: 'Hapus Dokumen', session_expired: 'Sesi Berakhir',
+    change_username: 'Ganti Username'
   };
   // Bungkus tiap sel dengan tanda kutip dan gandakan kutip di dalamnya - nama dokumen
   // sering mengandung koma, yang tanpa ini akan menggeser kolom di Excel.

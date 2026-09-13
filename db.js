@@ -279,12 +279,37 @@ module.exports = {
   },
   // Edits an existing user's profile fields (not password - use resetUserPassword for that).
   // Only overwrites fields that are explicitly provided (undefined = leave unchanged).
-  async updateUser(userId, { full_name, jabatan, department, role }) {
+  // Mengubah username harus menyentuh DUA tempat di Redis: data user itu sendiri dan
+  // indeks username -> id yang dipakai saat login. Kalau salah satu tertinggal, user
+  // tidak bisa login lagi. Karena itu perubahan username dilakukan lewat fungsi ini,
+  // bukan dengan mengedit data di konsol Redis secara manual.
+  async updateUser(userId, { full_name, jabatan, department, role, username }) {
     await ensureSeeded();
+    const nextUsername = username !== undefined && username !== null
+      ? String(username).trim().toLowerCase()
+      : undefined;
+    if (nextUsername !== undefined && nextUsername.length < 3) {
+      throw new Error('Username minimal 3 karakter');
+    }
+
     if (KV_CONFIGURED) {
       const raw = await kv.hget(K.users, String(userId));
       if (!raw) throw new Error('User tidak ditemukan');
       const user = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      const oldUsername = user.username;
+
+      if (nextUsername !== undefined && nextUsername !== oldUsername) {
+        const taken = await kv.hget(K.usernameIndex, nextUsername);
+        if (taken && String(taken) !== String(userId)) throw new Error('Username sudah dipakai personil lain');
+        // Indeks baru ditulis LEBIH DULU, indeks lama dihapus setelahnya - kalau
+        // prosesnya terputus di tengah, user masih bisa login dengan salah satunya
+        // daripada terkunci sama sekali.
+        await kv.hset(K.usernameIndex, { [nextUsername]: String(userId) });
+        user.username = nextUsername;
+        await kv.hset(K.users, { [userId]: JSON.stringify(user) });
+        await kv.hdel(K.usernameIndex, oldUsername);
+      }
+
       if (full_name !== undefined) user.full_name = full_name;
       if (jabatan !== undefined) user.jabatan = jabatan;
       if (department !== undefined) user.department = department;
@@ -292,9 +317,16 @@ module.exports = {
       await kv.hset(K.users, { [userId]: JSON.stringify(user) });
       return;
     }
+
     const store = loadFileStore();
     const user = store.users.find(u => u.id === userId);
     if (!user) throw new Error('User tidak ditemukan');
+    if (nextUsername !== undefined && nextUsername !== user.username) {
+      if (store.users.some(u => u.id !== userId && u.username === nextUsername)) {
+        throw new Error('Username sudah dipakai personil lain');
+      }
+      user.username = nextUsername;
+    }
     if (full_name !== undefined) user.full_name = full_name;
     if (jabatan !== undefined) user.jabatan = jabatan;
     if (department !== undefined) user.department = department;

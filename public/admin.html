@@ -180,7 +180,7 @@ function editUserRow(userId) {
   const deptOptions = cachedDepartmentNames.map(d => `<option value="${d}" ${d === u.department ? 'selected' : ''}>${d}</option>`).join('');
   const tr = document.getElementById(`user-row-${userId}`);
   tr.innerHTML = `
-    <td>${u.username}</td>
+    <td><input type="text" id="edit_username_${userId}" value="${u.username}" style="min-width:120px;" title="Username untuk login"></td>
     <td><input type="text" id="edit_full_name_${userId}" value="${u.full_name}" style="min-width:140px;"></td>
     <td><input type="text" id="edit_jabatan_${userId}" value="${u.jabatan || ''}" style="min-width:130px;"></td>
     <td><select id="edit_department_${userId}" style="min-width:150px;">${deptOptions}</select></td>
@@ -195,7 +195,16 @@ function editUserRow(userId) {
 }
 
 async function saveUserEdit(userId) {
+  const usernameField = document.getElementById(`edit_username_${userId}`);
+  const current = cachedUsers.find(x => x.id === userId);
+  const newUsername = usernameField.value.trim().toLowerCase();
+  if (current && newUsername !== current.username) {
+    // Username adalah yang dipakai untuk login, jadi perubahannya dikonfirmasi dulu -
+    // personil bersangkutan harus diberi tahu, kalau tidak dia akan gagal masuk.
+    if (!confirm(`Ubah username "${current.username}" menjadi "${newUsername}"?\n\nPersonil ini harus login memakai username baru. Passwordnya tidak berubah.`)) return;
+  }
   const body = {
+    username: newUsername,
     full_name: document.getElementById(`edit_full_name_${userId}`).value,
     jabatan: document.getElementById(`edit_jabatan_${userId}`).value,
     department: document.getElementById(`edit_department_${userId}`).value,
