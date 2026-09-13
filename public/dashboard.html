@@ -362,6 +362,13 @@ document.addEventListener('keydown', (e) => {
 // ---------- NAVIGASI SIDEBAR ----------
 function setView(view) {
   currentView = view;
+  // Pindah menu selalu mengembalikan halaman ke posisi paling atas - termasuk
+  // guliran dalam sidebar itu sendiri. Tanpa ini, berpindah dari daftar panjang
+  // ke daftar pendek membuat halaman menyusut dan posisi gulirannya bergeser
+  // sendiri, sehingga kartu nama di sidebar ikut terpotong.
+  window.scrollTo({ top: 0 });
+  const sidebar = document.querySelector('.sidebar');
+  if (sidebar) sidebar.scrollTop = 0;
   document.querySelectorAll('.side-link').forEach(el => el.classList.toggle('active', el.dataset.view === view));
   const isUpload = view === 'upload';
   const isNotif = view === 'notifications';

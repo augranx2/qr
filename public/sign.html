@@ -415,29 +415,66 @@ function updatePhysicalSize() {
   }
 }
 
+// Satu dokumen hanya boleh diproses satu TTD dalam satu waktu, karena menempel QR
+// berarti menulis ulang seluruh berkas - dua penulisan bersamaan membuat salah satu
+// QR hilang. Bila giliran sedang dipakai orang lain (server membalas 409), halaman
+// menunggu sebentar lalu mencoba lagi sendiri, sehingga penandatangan tidak perlu
+// menekan tombol berulang kali.
+const SIGN_RETRY_MAX = 8;        // total percobaan
+const SIGN_RETRY_DELAY_MS = 2500; // jeda antar percobaan
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function postSignature() {
+  const res = await fetch(`/api/documents/${docId}/sign`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      qr_x: qrFrac.x,
+      qr_y: qrFrac.y,
+      qr_size: qrFrac.size,
+      page_number: currentPage
+    })
+  });
+  const data = await res.json();
+  return { status: res.status, ok: res.ok, data };
+}
+
 async function submitSignature() {
   const btn = document.getElementById('signBtn');
   const msgEl = document.getElementById('signMsg');
   btn.disabled = true;
-  btn.textContent = 'Memproses...';
   try {
-    const res = await fetch(`/api/documents/${docId}/sign`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        qr_x: qrFrac.x,
-        qr_y: qrFrac.y,
-        qr_size: qrFrac.size,
-        page_number: currentPage
-      })
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error);
+    let result = null;
+    for (let attempt = 1; attempt <= SIGN_RETRY_MAX; attempt++) {
+      btn.textContent = attempt === 1 ? 'Memproses...' : 'Menunggu giliran...';
+      result = await postSignature();
+      if (result.status !== 409) break;
+
+      // Dokumen sedang dipakai orang lain - tunggu lalu ulangi sendiri.
+      msgEl.textContent = `Dokumen sedang ditandatangani orang lain. Menunggu giliran, mencoba lagi otomatis (${attempt}/${SIGN_RETRY_MAX})...`;
+      msgEl.className = 'msg';
+      msgEl.style.background = 'var(--amber-soft)';
+      msgEl.style.color = 'var(--amber)';
+      msgEl.style.display = 'block';
+      if (attempt < SIGN_RETRY_MAX) await sleep(SIGN_RETRY_DELAY_MS);
+    }
+
+    msgEl.style.background = '';
+    msgEl.style.color = '';
+
+    if (result.status === 409) {
+      // Sudah dicoba berkali-kali dan tetap terpakai - kemungkinan ada proses yang
+      // macet. Di titik ini pengguna perlu tahu dan mencoba lagi secara manual.
+      throw new Error('Dokumen masih dipakai proses TTD lain setelah beberapa kali percobaan. Coba lagi beberapa saat lagi.');
+    }
+    if (!result.ok) throw new Error(result.data.error);
+
     placedThisSession++;
     msgEl.textContent = `QR ke-${placedThisSession} berhasil ditempel di halaman ${currentPage}. Silakan tempel QR lagi kalau masih ada, atau klik Selesai.`;
     msgEl.className = 'msg success';
     msgEl.style.display = 'block';
-    await loadDoc(false); // refresh preview to show the QR we just placed, without re-attaching drag listeners
+    await loadDoc(false); // segarkan pratinjau agar QR yang baru ditempel terlihat
   } catch (err) {
     msgEl.textContent = err.message;
     msgEl.className = 'msg error';

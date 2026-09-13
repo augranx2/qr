@@ -813,8 +813,9 @@ app.get('/api/documents/:id/file', requireLogin, async (req, res) => {
 
 // ---------- SIGNING (place QR + embed) ----------
 app.post('/api/documents/:id/sign', requireLogin, async (req, res) => {
+  let lockHeld = false;
   try {
-    const doc = await db.getDocumentById(req.params.id);
+    let doc = await db.getDocumentById(req.params.id);
     if (!doc) return res.status(404).json({ error: 'Dokumen tidak ditemukan' });
     if (!canAccessDocument(req.user, doc)) return res.status(403).json({ error: 'Anda tidak memiliki akses ke dokumen ini' });
     if (!canSignDocument(req.user, doc)) {
@@ -824,6 +825,22 @@ app.post('/api/documents/:id/sign', requireLogin, async (req, res) => {
           : 'Departemen Anda tidak termasuk yang diminta menandatangani dokumen ini'
       });
     }
+
+    // Hanya SATU proses TTD yang boleh berjalan pada satu dokumen dalam satu waktu.
+    // Tanpa ini, dua orang yang menekan "Tandatangani" bersamaan sama-sama membaca
+    // berkas sumber yang sama, dan QR milik yang selesai duluan tertimpa oleh yang
+    // belakangan - dua TTD tercatat di sistem, tapi hanya satu QR muncul di berkas.
+    lockHeld = await db.acquireSignLock(doc.id);
+    if (!lockHeld) {
+      return res.status(409).json({
+        error: 'Dokumen ini sedang ditandatangani orang lain. Tunggu beberapa detik lalu coba lagi.'
+      });
+    }
+
+    // Dibaca ulang SETELAH kunci didapat, supaya memakai versi terbaru dokumen -
+    // termasuk QR yang baru saja dibubuhkan orang lain sesaat sebelumnya.
+    doc = await db.getDocumentById(doc.id);
+    if (!doc) return res.status(404).json({ error: 'Dokumen tidak ditemukan' });
 
     let { qr_x, qr_y, qr_size, page_number } = req.body;
     if (qr_x == null || qr_y == null || qr_size == null) {
@@ -1044,6 +1061,10 @@ app.post('/api/documents/:id/sign', requireLogin, async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Gagal menandatangani dokumen: ' + e.message });
+  } finally {
+    // Kunci selalu dilepas, termasuk saat terjadi galat - kalau tidak, dokumen akan
+    // terkunci sampai TTL-nya habis dan tidak bisa ditandatangani siapa pun.
+    if (lockHeld) await db.releaseSignLock(req.params.id).catch(() => {});
   }
 });
 
@@ -1112,14 +1133,16 @@ app.delete('/api/documents/:id', requireLogin, async (req, res) => {
 
 // ---------- AUDIT TRAIL (admin / manager / QA) ----------
 app.get('/api/audit-log', requireLogin, requireAuditAccess, async (req, res) => {
-  const entries = await db.listAuditLog(500);
+  const entries = await db.listAuditLog(1500);
   res.json({ entries });
 });
 
 // Unduh audit trail sebagai CSV. Dibuat di server (bukan di browser) supaya seluruh
 // data ikut terunduh, bukan hanya yang kebetulan sedang tampil di layar.
 app.get('/api/audit-log/export', requireLogin, requireAuditAccess, async (req, res) => {
-  const entries = await db.listAuditLog(500);
+  // Unduhan CSV mengambil SELURUH riwayat yang tersimpan (5000), bukan hanya yang
+  // tampil di layar - untuk keperluan audit, sebagian riwayat tidak banyak gunanya.
+  const entries = await db.listAuditLog(5000);
   const LABELS = {
     login: 'Login', logout: 'Logout', upload_document: 'Upload Dokumen',
     sign_document: 'Tanda Tangan', change_password: 'Ganti Password',

@@ -78,6 +78,8 @@ const DEFAULT_DEPARTMENTS = [
 ];
 
 let fileCache = null;
+let fileLocks = null;
+
 function loadFileStore() {
   if (fileCache) return fileCache;
   if (!fs.existsSync(DATA_FILE)) {
@@ -617,6 +619,40 @@ module.exports = {
     persistFileStore();
   },
 
+  // ---- kunci proses tanda tangan (per dokumen) ----
+  // Pembubuhan TTD membaca berkas sumber, menempelkan QR, lalu menulis balik. Bila
+  // dua orang melakukannya bersamaan pada dokumen yang sama, keduanya membaca versi
+  // sumber yang SAMA, dan hasil tulis yang belakangan menimpa QR milik yang duluan -
+  // catatan TTD tercatat dua-duanya, tapi di berkas hanya tampak satu QR.
+  //
+  // Kunci ini memastikan hanya satu proses TTD berjalan pada satu dokumen dalam satu
+  // waktu. TTL dipasang supaya kunci tidak menggantung selamanya bila proses gagal
+  // di tengah jalan (misalnya fungsi serverless berakhir mendadak).
+  async acquireSignLock(documentId, ttlMs = 90000) {
+    await ensureSeeded();
+    const key = `${KV_PREFIX}:signlock:${documentId}`;
+    if (KV_CONFIGURED) {
+      // NX: hanya berhasil bila kunci belum ada - operasi atomik di sisi Redis
+      const ok = await kv.set(key, Date.now(), { nx: true, px: ttlMs });
+      return ok === 'OK' || ok === true;
+    }
+    // Mode berkas hanya berjalan satu proses, jadi kunci di memori sudah memadai
+    if (!fileLocks) fileLocks = new Map();
+    const until = fileLocks.get(documentId);
+    if (until && until > Date.now()) return false;
+    fileLocks.set(documentId, Date.now() + ttlMs);
+    return true;
+  },
+
+  async releaseSignLock(documentId) {
+    const key = `${KV_PREFIX}:signlock:${documentId}`;
+    if (KV_CONFIGURED) {
+      try { await kv.del(key); } catch (e) { /* TTL akan membersihkannya sendiri */ }
+      return;
+    }
+    if (fileLocks) fileLocks.delete(documentId);
+  },
+
   async clearNotifications(userId, ids) {
     await ensureSeeded();
     // ids kosong/null = hapus semua notifikasi milik user ini
@@ -638,12 +674,14 @@ module.exports = {
     const full = { ...entry, timestamp: new Date().toISOString() };
     if (KV_CONFIGURED) {
       await kv.lpush(K.auditLog, JSON.stringify(full));
-      await kv.ltrim(K.auditLog, 0, 1999); // keep only the most recent 2000 entries
+      // Simpan 5000 aktivitas terakhir. Satu entri ~330 byte, jadi 5000 entri hanya
+      // sekitar 1,6 MB - sangat jauh di bawah kuota 256 MB paket gratis Upstash.
+      await kv.ltrim(K.auditLog, 0, 4999);
       return;
     }
     const store = loadFileStore();
     store.auditLog.unshift(full);
-    if (store.auditLog.length > 2000) store.auditLog.length = 2000;
+    if (store.auditLog.length > 5000) store.auditLog.length = 5000;
     persistFileStore();
   },
   async listAuditLog(limit = 200) {
