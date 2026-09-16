@@ -378,6 +378,13 @@ app.post('/api/users', requireLogin, requireAdmin, async (req, res) => {
   if (!username || !password || !full_name) return res.status(400).json({ error: 'Data tidak lengkap' });
   try {
     await db.createUser({ username, password, full_name, department, role, jabatan });
+    // Pemberian hak akses adalah pengendalian yang harus bisa ditelusuri: yang dicatat
+    // adalah ADMIN pelakunya, sedangkan akun yang dibuat ditulis pada kolom keterangan.
+    await db.logAudit({
+      type: 'create_user', user_id: req.user.id, username: req.user.username,
+      full_name: req.user.full_name,
+      doc_name: `${username} — ${full_name} (${department || 'tanpa departemen'}, peran: ${role || 'personil'})`
+    });
     res.json({ ok: true });
   } catch (e) {
     res.status(400).json({ error: e.message || 'Username sudah dipakai' });
@@ -389,7 +396,13 @@ app.post('/api/users/:id/reset-password', requireLogin, requireAdmin, async (req
   const { password } = req.body;
   if (!password || password.length < 4) return res.status(400).json({ error: 'Password baru minimal 4 karakter' });
   try {
+    const target = await db.getUserById(Number(req.params.id));
     await db.resetUserPassword(Number(req.params.id), password);
+    await db.logAudit({
+      type: 'reset_password', user_id: req.user.id, username: req.user.username,
+      full_name: req.user.full_name,
+      doc_name: target ? `${target.username} — ${target.full_name}` : `User #${req.params.id}`
+    });
     res.json({ ok: true });
   } catch (e) {
     res.status(400).json({ error: e.message });
@@ -415,7 +428,15 @@ app.post('/api/me/change-password', requireLogin, async (req, res) => {
 app.delete('/api/users/:id', requireLogin, requireAdmin, async (req, res) => {
   if (Number(req.params.id) === req.user.id) return res.status(400).json({ error: 'Tidak bisa menghapus akun sendiri' });
   try {
+    // Data user diambil SEBELUM dihapus - setelah terhapus tidak ada lagi yang bisa
+    // dicatat, dan justru identitas akun yang dihapus itulah yang perlu tertelusur.
+    const target = await db.getUserById(Number(req.params.id));
     await db.deleteUser(Number(req.params.id));
+    await db.logAudit({
+      type: 'delete_user', user_id: req.user.id, username: req.user.username,
+      full_name: req.user.full_name,
+      doc_name: target ? `${target.username} — ${target.full_name} (${target.department || 'tanpa departemen'})` : `User #${req.params.id}`
+    });
     res.json({ ok: true });
   } catch (e) {
     res.status(400).json({ error: e.message });
@@ -439,6 +460,25 @@ app.patch('/api/users/:id', requireLogin, requireAdmin, async (req, res) => {
         full_name: req.user.full_name,
         doc_name: `${before.username} → ${String(username).trim().toLowerCase()} (${before.full_name})`
       });
+    }
+
+    // Perubahan departemen atau peran mengubah CAKUPAN HAK AKSES seseorang, jadi
+    // dicatat terpisah dari sekadar perbaikan nama atau jabatan.
+    if (before) {
+      const perubahan = [];
+      if (department !== undefined && department !== before.department) {
+        perubahan.push(`departemen: ${before.department || '-'} → ${department}`);
+      }
+      if (role !== undefined && role !== before.role) {
+        perubahan.push(`peran: ${before.role} → ${role}`);
+      }
+      if (perubahan.length) {
+        await db.logAudit({
+          type: 'update_access', user_id: req.user.id, username: req.user.username,
+          full_name: req.user.full_name,
+          doc_name: `${before.username} — ${before.full_name} (${perubahan.join('; ')})`
+        });
+      }
     }
     res.json({ ok: true });
   } catch (e) {
@@ -1161,7 +1201,9 @@ app.get('/api/audit-log/export', requireLogin, requireAuditAccess, async (req, r
     sign_document: 'Tanda Tangan', change_password: 'Ganti Password',
     archive_document: 'Arsipkan Dokumen', unarchive_document: 'Kembalikan dari Arsip',
     delete_document: 'Hapus Dokumen', session_expired: 'Sesi Berakhir',
-    change_username: 'Ganti Username'
+    change_username: 'Ganti Username', create_user: 'Buat Akun',
+    delete_user: 'Hapus Akun', reset_password: 'Reset Password oleh Admin',
+    update_access: 'Ubah Hak Akses'
   };
   // Bungkus tiap sel dengan tanda kutip dan gandakan kutip di dalamnya - nama dokumen
   // sering mengandung koma, yang tanpa ini akan menggeser kolom di Excel.

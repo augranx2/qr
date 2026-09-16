@@ -56,7 +56,11 @@ const LABELS = {
   unarchive_document: ['Kembalikan dari Arsip', 'upload_document'],
   delete_document: ['Hapus Dokumen', 'logout'],
   session_expired: ['Sesi Berakhir', 'logout'],
-  change_username: ['Ganti Username', 'upload_document']
+  change_username: ['Ganti Username', 'upload_document'],
+  create_user: ['Buat Akun', 'upload_document'],
+  delete_user: ['Hapus Akun', 'logout'],
+  reset_password: ['Reset Password oleh Admin', 'logout'],
+  update_access: ['Ubah Hak Akses', 'upload_document']
 };
 
 function downloadCsv() {
@@ -83,8 +87,15 @@ function detailFor(entry) {
   if (entry.doc_number || entry.doc_name) {
     parts.push(`<span class="mono">${esc(entry.doc_number || '-')}</span> ${esc(entry.doc_name || '')}`);
   }
-  if (entry.type === 'change_username') {
-    parts.push('<span class="detail-note">perubahan username oleh admin</span>');
+  const CATATAN_AKUN = {
+    change_username: 'perubahan username oleh admin',
+    create_user: 'akun baru dibuat oleh admin',
+    delete_user: 'akun dihapus permanen oleh admin',
+    reset_password: 'kata sandi diatur ulang oleh admin',
+    update_access: 'perubahan departemen/peran oleh admin'
+  };
+  if (CATATAN_AKUN[entry.type]) {
+    parts.push(`<span class="detail-note">${CATATAN_AKUN[entry.type]}</span>`);
   }
   if (entry.type === 'session_expired') {
     parts.push('<span class="detail-note">sesi berakhir otomatis (tidak ada aktivitas / browser ditutup tanpa logout)</span>');
