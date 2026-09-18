@@ -31,6 +31,33 @@
      halaman oleh browser, dan kotaknya tidak bisa digeser di HP.
      pointer-events: none membuat semua sentuhan diarahkan ke kotak induknya. */
   .qr-box * { touch-action: none; pointer-events: none; }
+  /* Penanda posisi yang sudah ditetapkan untuk penandatangan lain - hanya
+     ditampilkan sebagai acuan, tidak bisa digeser. */
+  .slot-marker {
+    position: absolute; border: 2px dashed var(--slate); background: rgba(90,106,102,0.10);
+    border-radius: 4px; pointer-events: none; box-sizing: border-box;
+    display: flex; align-items: flex-end; justify-content: center; overflow: hidden;
+  }
+  .slot-marker span {
+    font-size: 9px; color: var(--slate); background: rgba(255,255,255,0.85);
+    padding: 1px 4px; border-radius: 3px; white-space: nowrap; max-width: 100%;
+    overflow: hidden; text-overflow: ellipsis; margin-bottom: 2px;
+  }
+  .slot-sep { border: none; border-top: 1px solid var(--border); margin: 18px 0 14px; }
+  .slot-help { font-size: 11.5px; color: var(--ink-faint); line-height: 1.5; margin: 0 0 10px; }
+  .slot-list { margin: 12px 0 4px; display: flex; flex-direction: column; gap: 5px; }
+  .slot-row {
+    display: flex; align-items: center; gap: 8px; font-size: 12px;
+    background: var(--paper); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 10px;
+  }
+  .slot-row b { color: var(--brand-dark); font-weight: 600; }
+  .slot-row .slot-pos { color: var(--ink-faint); font-family: var(--font-mono); font-size: 10.5px; }
+  .slot-row button {
+    margin: 0 0 0 auto; width: auto; padding: 2px 8px; font-size: 11px;
+    background: none; border: 1px solid var(--border-strong); color: var(--red);
+  }
+  .slot-row button:hover { background: var(--red-soft); border-color: var(--red); }
   .size-lock-note {
     margin-top: 8px; padding: 8px 11px; border-radius: 8px;
     background: var(--brand-soft); color: var(--brand-dark);
@@ -103,9 +130,20 @@
       </div>
       <div class="qr-size-physical" id="qrSizePhysical"></div>
       <div class="size-lock-note" id="sizeLockNote" style="display:none;"></div>
+      <div class="size-lock-note" id="posLockNote" style="display:none;"></div>
       <div class="hint">Kotak putus-putus di dokumen adalah <b>ukuran asli stempel TTE</b> yang akan tercetak: QR di atas, lalu nama Anda dan tanggal/jam TTD. Garis putus-putus dan latarnya hanya panduan di layar &mdash; di dokumen hanya QR dan tulisannya yang muncul, sisanya transparan. Geser ke posisi yang diinginkan, sesuaikan ukuran (bisa juga ketik angka persen langsung supaya ukurannya seragam tiap kali minta TTD ke orang lain), lalu klik Tandatangani. Setelah tersimpan, Anda bisa langsung menempel QR lagi di posisi/halaman lain tanpa perlu kembali ke Dashboard dulu.</div>
       <div class="msg" id="signMsg" style="margin-top:10px;"></div>
       <button class="primary" id="signBtn" onclick="submitSignature()">Tandatangani Dokumen</button>
+
+      <div id="slotPanel" style="display:none;">
+        <hr class="slot-sep">
+        <label>Atur posisi TTD penandatangan</label>
+        <p class="slot-help">Tentukan posisi QR untuk tiap penandatangan. Yang sudah diatur tinggal menekan tombol tandatangani tanpa perlu menempatkan QR sendiri.</p>
+        <select id="slotTarget"></select>
+        <button class="secondary" onclick="assignSlot()">Tetapkan posisi kotak saat ini</button>
+        <div id="slotList" class="slot-list"></div>
+        <button class="primary" id="slotSaveBtn" onclick="saveSlots()">Simpan Posisi TTD</button>
+      </div>
       <button class="secondary" id="doneBtn" onclick="window.location.href='/dashboard.html'" style="width:100%; margin-top:10px; padding:11px;">Selesai, Kembali ke Dashboard</button>
     </div>
   </div>
@@ -137,6 +175,8 @@ let placedThisSession = 0;
 // tingginya otomatis mengikuti STAMP.heightRatio.
 let qrFrac = { x: 0.7, y: 0.05, size: 0.12 };
 let dragging = false;
+// Bila pengupload sudah menetapkan posisi, kotak tidak boleh digeser lagi.
+let positionLocked = false;
 
 // HARUS sama persis dengan konstanta STAMP di app.js - ini yang membuat kotak
 // template di layar berukuran sama dengan hasil cetaknya. QR memakai qrRatio dari
@@ -168,6 +208,107 @@ async function checkAuth() {
   // benar-benar sama dengan yang akan tercetak nanti.
   document.getElementById('stampName').textContent = data.user.full_name || data.user.username;
   updateQrBox();
+}
+
+// ===================== POSISI TTD YANG DITETAPKAN =====================
+// slots: daftar posisi yang ditetapkan pengelola dokumen untuk tiap penandatangan.
+let slots = [];
+
+function slotKey(sl) { return `${sl.assignee_type}:${sl.assignee}`; }
+
+// Daftar pilihan penandatangan: orang yang di-tag lebih dulu, lalu departemen wajib.
+function buildSlotTargets() {
+  const sel = document.getElementById('slotTarget');
+  const opts = [];
+  (doc.required_user_names || []).forEach(u => {
+    opts.push({ type: 'user', value: u.id, label: u.full_name });
+  });
+  (doc.required_departments || []).forEach(d => {
+    opts.push({ type: 'dept', value: d, label: `Departemen ${d}` });
+  });
+  sel.innerHTML = opts.length
+    ? opts.map(o => `<option value="${o.type}|${esc(String(o.value))}">${esc(o.label)}</option>`).join('')
+    : '<option value="">Belum ada penandatangan ditetapkan</option>';
+}
+
+function assignSlot() {
+  const sel = document.getElementById('slotTarget');
+  if (!sel.value) return;
+  const [type, value] = sel.value.split('|');
+  const label = sel.options[sel.selectedIndex].text;
+  // Satu penandatangan hanya punya satu posisi - penetapan ulang menimpa yang lama.
+  slots = slots.filter(sl => slotKey(sl) !== `${type}:${value}`);
+  slots.push({
+    assignee_type: type, assignee: value, label,
+    page: currentPage, x: qrFrac.x, y: qrFrac.y, size: qrFrac.size
+  });
+  renderSlots();
+}
+
+function removeSlot(key) {
+  slots = slots.filter(sl => slotKey(sl) !== key);
+  renderSlots();
+}
+
+function renderSlots() {
+  const list = document.getElementById('slotList');
+  list.innerHTML = slots.length
+    ? slots.map(sl => `
+        <div class="slot-row">
+          <b>${esc(sl.label || sl.assignee)}</b>
+          <span class="slot-pos">hal ${sl.page} · ${Math.round(sl.x * 100)},${Math.round(sl.y * 100)}</span>
+          <button type="button" onclick="removeSlot('${esc(slotKey(sl))}')">Hapus</button>
+        </div>`).join('')
+    : '<span class="slot-help" style="margin:0;">Belum ada posisi yang ditetapkan.</span>';
+  renderSlotMarkers();
+}
+
+// Penanda abu-abu di atas dokumen untuk slot pada halaman yang sedang dibuka.
+function renderSlotMarkers() {
+  const wrap = document.getElementById('canvasWrap');
+  wrap.querySelectorAll('.slot-marker').forEach(el => el.remove());
+  const surface = getSurfaceEl();
+  if (!surface) return;
+  const w = surface.clientWidth || surface.width;
+  const h = surface.clientHeight || surface.height;
+  slots.filter(sl => sl.page === currentPage).forEach(sl => {
+    const el = document.createElement('div');
+    el.className = 'slot-marker';
+    const W = sl.size * w;
+    el.style.width = W + 'px';
+    el.style.height = (W * STAMP.heightRatio) + 'px';
+    el.style.left = (sl.x * w) + 'px';
+    el.style.top = (sl.y * h) + 'px';
+    el.innerHTML = `<span>${esc(sl.label || sl.assignee)}</span>`;
+    wrap.appendChild(el);
+  });
+}
+
+async function saveSlots() {
+  const btn = document.getElementById('slotSaveBtn');
+  const msgEl = document.getElementById('signMsg');
+  btn.disabled = true;
+  try {
+    const res = await fetch(`/api/documents/${docId}/slots`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slots })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    msgEl.textContent = `${data.count} posisi TTD tersimpan. Penandatangan tinggal menekan tombol tandatangani.`;
+    msgEl.className = 'msg success';
+    msgEl.style.display = 'block';
+  } catch (e) {
+    msgEl.textContent = e.message;
+    msgEl.className = 'msg error';
+    msgEl.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function esc(v) {
+  return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
 async function loadDoc(isInitial) {
@@ -215,6 +356,30 @@ async function loadDoc(isInitial) {
      ${req.length ? `<div><b>Wajib TTD dari:</b> ${req.join(', ')}</div>` : ''}
      ${taggedLine}
      ${ttdInfo}`;
+
+  // Panel pengaturan posisi hanya untuk pengupload/pengelola dokumen.
+  if (doc.can_manage) {
+    slots = (doc.signature_slots || []).map(sl => ({ ...sl, assignee: String(sl.assignee) }));
+    document.getElementById('slotPanel').style.display = 'block';
+    buildSlotTargets();
+    renderSlots();
+  }
+
+  // Bila posisi TTD kita sudah ditetapkan pengupload, kotak langsung dipindahkan ke
+  // sana dan dikunci - tinggal menekan tombol tandatangani.
+  if (doc.my_slot) {
+    const sl = doc.my_slot;
+    qrFrac = { x: sl.x, y: sl.y, size: sl.size };
+    if (sl.page && sl.page !== currentPage) currentPage = sl.page;
+    positionLocked = true;
+    const note = document.getElementById('posLockNote');
+    note.style.display = 'block';
+    note.textContent = `Posisi dan ukuran QR sudah ditetapkan oleh pengupload dokumen (halaman ${sl.page}). Anda cukup menekan tombol Tandatangani Dokumen.`;
+    document.getElementById('qrSize').disabled = true;
+    document.getElementById('qrSizeNumber').disabled = true;
+    updateQrBox();
+    updatePhysicalSize();
+  }
 
   // Ukuran stempel dikunci mengikuti TTD pertama pada dokumen ini, supaya semua
   // tanda tangan tampil seragam. Posisi tetap bebas diatur.
@@ -287,6 +452,8 @@ function getSurfaceEl() {
 }
 
 function updateQrBox() {
+  // penanda slot mengikuti perubahan ukuran/zoom tampilan
+  if (typeof slots !== 'undefined' && slots.length) setTimeout(renderSlotMarkers, 0);
   const surface = getSurfaceEl();
   const box = document.getElementById('qrBox');
   const w = surface.clientWidth || surface.width;
@@ -322,6 +489,10 @@ function setupDrag() {
   let startX, startY, boxStartLeft, boxStartTop;
 
   function startDrag(clientX, clientY) {
+    // Posisi yang sudah ditetapkan pengupload tidak boleh digeser penandatangan -
+    // server pun akan mengabaikan koordinat yang dikirim, jadi lebih jujur
+    // mematikannya di sini daripada membiarkan kotaknya seolah bisa dipindah.
+    if (positionLocked) return;
     dragging = true;
     startX = clientX; startY = clientY;
     boxStartLeft = box.offsetLeft; boxStartTop = box.offsetTop;

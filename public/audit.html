@@ -25,7 +25,7 @@
 <main>
   <div class="panel">
     <div class="panel-kop"><h2>Riwayat Aktivitas</h2><span class="kop-badge" id="logCount">0 aktivitas</span></div>
-    <p class="sub">Login, logout, upload dokumen, dan tanda tangan — 1.500 aktivitas terakhir, terbaru di atas. Bisa diunduh sebagai CSV untuk kebutuhan audit.</p>
+    <p class="sub">Login, logout, upload dokumen, dan tanda tangan — 5.000 aktivitas terakhir, terbaru di atas. Bisa diunduh sebagai CSV untuk kebutuhan audit.</p>
     <table>
       <thead><tr><th>Waktu</th><th>Aksi</th><th>Oleh</th><th>Detail</th></tr></thead>
       <tbody id="logList"></tbody>
@@ -60,7 +60,8 @@ const LABELS = {
   create_user: ['Buat Akun', 'upload_document'],
   delete_user: ['Hapus Akun', 'logout'],
   reset_password: ['Reset Password oleh Admin', 'logout'],
-  update_access: ['Ubah Hak Akses', 'upload_document']
+  update_access: ['Ubah Hak Akses', 'upload_document'],
+  set_slots: ['Atur Posisi TTD', 'sign_document']
 };
 
 function downloadCsv() {
@@ -104,6 +105,10 @@ function detailFor(entry) {
     parts.push(entry.was_signed
       ? '<span class="detail-warn">dihapus permanen — dokumen ini sudah punya tanda tangan</span>'
       : '<span class="detail-note">dihapus permanen</span>');
+    if (entry.reason) parts.push(`<span class="detail-reason">Alasan: ${esc(entry.reason)}</span>`);
+  }
+  if (entry.type === 'set_slots' && entry.reason) {
+    parts.push(`<span class="detail-note">${esc(entry.reason)}</span>`);
   }
   return parts.length ? parts.join('<br>') : '<span class="detail-note">&mdash;</span>';
 }

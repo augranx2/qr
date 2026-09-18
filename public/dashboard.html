@@ -251,6 +251,30 @@
   </div>
 </div>
 
+<!-- Modal konfirmasi penghapusan dokumen + alasan -->
+<div class="modal-backdrop" id="deleteModal" onclick="if(event.target===this) closeDelete()">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-avatar" style="background:var(--red);">!</div>
+      <div>
+        <div class="modal-title">Hapus Dokumen Permanen</div>
+        <div class="modal-sub" id="delDocName">&nbsp;</div>
+      </div>
+      <button class="modal-x" onclick="closeDelete()" title="Tutup">&times;</button>
+    </div>
+    <p class="del-warn" id="delWarn" style="display:none;"></p>
+    <p class="del-note">Berkas akan dihapus dari server dan Google Drive. Tindakan ini tidak dapat dibatalkan.</p>
+    <label for="delReason" style="display:block; margin-bottom:6px;">Alasan penghapusan (wajib)</label>
+    <textarea id="delReason" rows="3" placeholder="cth. Salah upload, berkas bukan versi final"></textarea>
+    <p class="del-hint">Alasan ini tercatat permanen di audit trail bersama nama Anda.</p>
+    <div class="msg error" id="delError" style="display:none;"></div>
+    <div class="modal-actions">
+      <button class="secondary" onclick="closeDelete()">Batal</button>
+      <button class="danger" id="delConfirmBtn" onclick="confirmDelete()">Hapus Permanen</button>
+    </div>
+  </div>
+</div>
+
 <!-- Popup konfirmasi upload selesai -->
 <div class="modal-backdrop" id="doneModal" onclick="if(event.target===this) closeDone()">
   <div class="modal modal-done">
@@ -356,7 +380,7 @@ function closeDone() { document.getElementById('doneModal').classList.remove('op
 
 // Esc menutup modal mana pun yang sedang terbuka
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { closeProfile(); closeDone(); }
+  if (e.key === 'Escape') { closeProfile(); closeDone(); closeDelete(); }
 });
 
 // ---------- NAVIGASI SIDEBAR ----------
@@ -524,6 +548,7 @@ async function loadDirectory() {
 // Kalau dibaca dari DOM, orang yang sudah dicentang lalu tersaring keluar oleh kotak
 // pencarian akan ikut hilang pilihannya - itu bug yang pernah terjadi.
 let selectedUserIds = new Set();
+let pendingDeleteId = null;
 
 function renderUserPicker() {
   const q = (document.getElementById('userSearch').value || '').trim().toLowerCase();
@@ -931,18 +956,57 @@ async function archiveDoc(docId, archived) {
 
 async function deleteDoc(docId) {
   const doc = allDocsCache.find(d => d.id === docId);
-  const warnSigned = doc && doc.signature_count > 0
-    ? `\n\n⚠️ Dokumen ini sudah punya ${doc.signature_count} tanda tangan. QR yang sudah dicetak/discan TIDAK akan bisa diverifikasi lagi setelah dihapus.`
-    : '';
-  if (!confirm(`Hapus PERMANEN dokumen ini? File akan dihapus dari server DAN Google Drive (kalau sudah tersimpan di sana). Tindakan ini tidak bisa dibatalkan.${warnSigned}`)) return;
-  const res = await fetch(`/api/documents/${docId}`, { method: 'DELETE' });
-  const data = await res.json();
-  if (!res.ok) { alert(data.error); return; }
-  loadDocs();
+  pendingDeleteId = docId;
+  document.getElementById('delDocName').textContent = doc ? `${doc.doc_number} — ${doc.doc_name}` : '';
+  // Peringatan khusus bila dokumen sudah bertanda tangan: QR yang telanjur dicetak
+  // tidak akan bisa diverifikasi lagi setelah dokumennya dihapus.
+  const warn = document.getElementById('delWarn');
+  if (doc && doc.signature_count > 0) {
+    warn.textContent = `Dokumen ini sudah memiliki ${doc.signature_count} tanda tangan. QR yang telanjur dicetak atau dibagikan TIDAK akan bisa diverifikasi lagi setelah dihapus.`;
+    warn.style.display = 'block';
+  } else {
+    warn.style.display = 'none';
+  }
+  document.getElementById('delReason').value = '';
+  document.getElementById('delError').style.display = 'none';
+  document.getElementById('deleteModal').classList.add('open');
+  setTimeout(() => document.getElementById('delReason').focus(), 50);
 }
 
-// "Lihat" membuka file di Google Drive - tapi tautannya diambil lewat endpoint
-// ber-login yang memeriksa hak akses dokumen, bukan dari halaman verifikasi publik.
+function closeDelete() {
+  document.getElementById('deleteModal').classList.remove('open');
+  pendingDeleteId = null;
+}
+
+async function confirmDelete() {
+  const reason = document.getElementById('delReason').value.trim();
+  const errEl = document.getElementById('delError');
+  if (reason.length < 10) {
+    errEl.textContent = 'Alasan penghapusan wajib diisi, minimal 10 karakter.';
+    errEl.style.display = 'block';
+    return;
+  }
+  const btn = document.getElementById('delConfirmBtn');
+  btn.disabled = true;
+  try {
+    const res = await fetch(`/api/documents/${pendingDeleteId}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      errEl.textContent = data.error;
+      errEl.style.display = 'block';
+      return;
+    }
+    closeDelete();
+    loadDocs();
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 async function viewSigned(docId) {
   const res = await fetch(`/api/documents/${docId}/drive-link`);
   const data = await res.json();

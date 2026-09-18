@@ -268,6 +268,16 @@ function canAccessDocument(user, doc) {
   return allowed.includes(user.department);
 }
 
+// Mencari slot posisi TTD yang sudah ditetapkan untuk seseorang. Slot atas nama
+// ORANG diperiksa lebih dulu daripada slot atas nama departemen - sama seperti
+// aturan hak tanda tangan, penetapan per orang selalu lebih spesifik.
+function findSlotForUser(doc, user) {
+  const slots = doc.signature_slots || [];
+  return slots.find(sl => sl.assignee_type === 'user' && Number(sl.assignee) === user.id)
+      || slots.find(sl => sl.assignee_type === 'dept' && sl.assignee === user.department)
+      || null;
+}
+
 // Siapa yang boleh MENANDATANGANI - sengaja lebih sempit daripada "boleh melihat".
 // Dua mode yang bisa dipakai bersamaan saat upload:
 //   - pilih DEPARTEMEN  -> semua personil departemen itu bisa TTD
@@ -487,6 +497,36 @@ app.patch('/api/users/:id', requireLogin, requireAdmin, async (req, res) => {
 });
 
 // ---------- DEPARTMENTS (controlled list used for upload dropdown + Drive folder mapping) ----------
+// Menetapkan posisi tanda tangan untuk tiap penandatangan. Hanya pengupload,
+// departemen pemilik dokumen, atau admin yang boleh mengaturnya.
+app.put('/api/documents/:id/slots', requireLogin, async (req, res) => {
+  const doc = await db.getDocumentById(req.params.id);
+  if (!doc) return res.status(404).json({ error: 'Dokumen tidak ditemukan' });
+  if (!canManageDocument(req.user, doc)) {
+    return res.status(403).json({ error: 'Anda tidak berhak mengatur posisi TTD dokumen ini' });
+  }
+  const raw = Array.isArray(req.body.slots) ? req.body.slots : [];
+  const slots = raw
+    .filter(sl => sl && (sl.assignee_type === 'user' || sl.assignee_type === 'dept'))
+    .map(sl => ({
+      assignee_type: sl.assignee_type,
+      assignee: sl.assignee_type === 'user' ? Number(sl.assignee) : String(sl.assignee),
+      label: String(sl.label || ''),
+      page: Math.max(1, Number(sl.page) || 1),
+      // Nilai posisi dibatasi 0-1 supaya kotak tidak bisa ditaruh di luar halaman
+      x: Math.min(1, Math.max(0, Number(sl.x) || 0)),
+      y: Math.min(1, Math.max(0, Number(sl.y) || 0)),
+      size: Math.min(0.5, Math.max(0.05, Number(sl.size) || 0.12))
+    }));
+  await db.setDocumentSlots(doc.id, slots);
+  await db.logAudit({
+    type: 'set_slots', user_id: req.user.id, username: req.user.username, full_name: req.user.full_name,
+    document_id: doc.id, doc_name: doc.doc_name, doc_number: doc.doc_number,
+    reason: `${slots.length} posisi TTD ditetapkan`
+  });
+  res.json({ ok: true, count: slots.length });
+});
+
 app.get('/api/departments', requireLogin, async (req, res) => {
   res.json({ departments: await db.listDepartments() });
 });
@@ -823,6 +863,10 @@ app.get('/api/documents/:id', requireLogin, async (req, res) => {
       // Halaman sign.html memakai ini untuk menonaktifkan tombol TTD lebih awal,
       // daripada membiarkan user menempel QR lalu baru ditolak server.
       can_sign: canSignDocument(req.user, doc),
+      // Seluruh slot posisi yang sudah ditetapkan, dan slot milik pengguna ini
+      signature_slots: doc.signature_slots || [],
+      my_slot: findSlotForUser(doc, req.user),
+      can_manage: canManageDocument(req.user, doc),
       // Ukuran stempel TTD pertama - penandatangan berikutnya mengikuti ukuran ini
       locked_qr_size: (() => {
         if (allSigs.length === 0) return null;
@@ -898,6 +942,17 @@ app.post('/api/documents/:id/sign', requireLogin, async (req, res) => {
     let { qr_x, qr_y, qr_size, page_number } = req.body;
     if (qr_x == null || qr_y == null || qr_size == null) {
       return res.status(400).json({ error: 'Posisi QR belum ditentukan' });
+    }
+
+    // Bila pengupload sudah menetapkan posisi untuk penandatangan ini, posisi itulah
+    // yang dipakai - bukan koordinat yang dikirim browser. Ditegakkan di server supaya
+    // tata letak dokumen tetap seragam walau permintaan dikirim langsung ke API.
+    const slot = findSlotForUser(doc, req.user);
+    if (slot) {
+      qr_x = slot.x;
+      qr_y = slot.y;
+      qr_size = slot.size;
+      page_number = slot.page;
     }
 
     // Ukuran stempel dikunci mengikuti TTD PERTAMA pada dokumen ini, supaya semua
@@ -1160,6 +1215,14 @@ app.delete('/api/documents/:id', requireLogin, async (req, res) => {
   if (!doc) return res.status(404).json({ error: 'Dokumen tidak ditemukan' });
   if (!canDeleteDocument(req.user, doc)) return res.status(403).json({ error: 'Hanya personil yang mengupload dokumen ini atau admin yang bisa menghapusnya' });
 
+  // Alasan penghapusan WAJIB diisi dan ikut tercatat di audit trail. Penghapusan
+  // dokumen adalah tindakan yang tidak bisa dibatalkan - tanpa alasan tertulis,
+  // catatan auditnya hanya menunjukkan bahwa dokumen hilang tanpa menjelaskan mengapa.
+  const reason = String(req.body && req.body.reason || '').trim();
+  if (reason.length < 10) {
+    return res.status(400).json({ error: 'Alasan penghapusan wajib diisi, minimal 10 karakter' });
+  }
+
   // Best-effort cleanup of the actual files - a file that's already missing/gone
   // shouldn't block removing the (now-broken-anyway) record, so failures here are
   // logged but never thrown back to the client.
@@ -1179,14 +1242,15 @@ app.delete('/api/documents/:id', requireLogin, async (req, res) => {
   await db.deleteDocument(req.params.id); // also removes this document's signature records
   await db.logAudit({
     type: 'delete_document', user_id: req.user.id, username: req.user.username, full_name: req.user.full_name,
-    document_id: doc.id, doc_name: doc.doc_name, doc_number: doc.doc_number, was_signed: signatureCount > 0
+    document_id: doc.id, doc_name: doc.doc_name, doc_number: doc.doc_number,
+    was_signed: signatureCount > 0, reason
   });
   res.json({ ok: true });
 });
 
 // ---------- AUDIT TRAIL (admin / manager / QA) ----------
 app.get('/api/audit-log', requireLogin, requireAuditAccess, async (req, res) => {
-  const entries = await db.listAuditLog(1500);
+  const entries = await db.listAuditLog(5000);
   res.json({ entries });
 });
 
@@ -1201,20 +1265,20 @@ app.get('/api/audit-log/export', requireLogin, requireAuditAccess, async (req, r
     sign_document: 'Tanda Tangan', change_password: 'Ganti Password',
     archive_document: 'Arsipkan Dokumen', unarchive_document: 'Kembalikan dari Arsip',
     delete_document: 'Hapus Dokumen', session_expired: 'Sesi Berakhir',
-    change_username: 'Ganti Username', create_user: 'Buat Akun',
+    change_username: 'Ganti Username', create_user: 'Buat Akun', set_slots: 'Atur Posisi TTD',
     delete_user: 'Hapus Akun', reset_password: 'Reset Password oleh Admin',
     update_access: 'Ubah Hak Akses'
   };
   // Bungkus tiap sel dengan tanda kutip dan gandakan kutip di dalamnya - nama dokumen
   // sering mengandung koma, yang tanpa ini akan menggeser kolom di Excel.
   const cell = v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
-  const rows = [['Waktu (WIB)', 'Aktivitas', 'Username', 'Nama Lengkap', 'Departemen', 'No. Dokumen', 'Nama Dokumen']];
+  const rows = [['Waktu (WIB)', 'Aktivitas', 'Username', 'Nama Lengkap', 'Departemen', 'No. Dokumen', 'Nama Dokumen', 'Alasan / Keterangan']];
   for (const e of entries) {
     rows.push([
       formatStampDateTime(e.timestamp).replace(' WIB', ''),
       LABELS[e.type] || e.type,
       e.username || '', e.full_name || '', e.department || '',
-      e.doc_number || '', e.doc_name || ''
+      e.doc_number || '', e.doc_name || '', e.reason || ''
     ]);
   }
   const csv = rows.map(r => r.map(cell).join(',')).join('\r\n');

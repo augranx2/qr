@@ -400,6 +400,24 @@ module.exports = {
   // Archive/unarchive just hides a document from the main dashboard lists - it never
   // touches the underlying files or signature records, so any QR already printed on
   // paper keeps working when scanned.
+  // Menyimpan "slot" posisi tanda tangan yang sudah ditentukan pengupload:
+  // setiap penandatangan punya kotak posisinya sendiri, sehingga saat menandatangani
+  // mereka tinggal menekan tombol tanpa perlu menempatkan QR satu per satu.
+  async setDocumentSlots(id, slots) {
+    await ensureSeeded();
+    if (KV_CONFIGURED) {
+      const raw = await kv.hget(K.documents, id);
+      if (!raw) return;
+      const doc = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      doc.signature_slots = slots;
+      await kv.hset(K.documents, { [id]: JSON.stringify(doc) });
+      return;
+    }
+    const store = loadFileStore();
+    const doc = store.documents.find(d => d.id === id);
+    if (doc) { doc.signature_slots = slots; persistFileStore(); }
+  },
+
   async setDocumentArchived(id, archived) {
     await ensureSeeded();
     if (KV_CONFIGURED) {
