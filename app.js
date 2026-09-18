@@ -268,14 +268,31 @@ function canAccessDocument(user, doc) {
   return allowed.includes(user.department);
 }
 
-// Mencari slot posisi TTD yang sudah ditetapkan untuk seseorang. Slot atas nama
-// ORANG diperiksa lebih dulu daripada slot atas nama departemen - sama seperti
-// aturan hak tanda tangan, penetapan per orang selalu lebih spesifik.
-function findSlotForUser(doc, user) {
+// Mengambil SEMUA slot posisi TTD milik seseorang, berurutan. Satu penandatangan
+// boleh punya lebih dari satu slot - misalnya harus membubuhkan QR di halaman 1 dan
+// halaman 5. Slot atas nama ORANG diperiksa lebih dulu daripada slot atas nama
+// departemen: sama seperti aturan hak tanda tangan, penetapan per orang lebih spesifik.
+function findSlotsForUser(doc, user) {
   const slots = doc.signature_slots || [];
-  return slots.find(sl => sl.assignee_type === 'user' && Number(sl.assignee) === user.id)
-      || slots.find(sl => sl.assignee_type === 'dept' && sl.assignee === user.department)
-      || null;
+  const milikOrang = slots.filter(sl => sl.assignee_type === 'user' && Number(sl.assignee) === user.id);
+  if (milikOrang.length) return milikOrang;
+  return slots.filter(sl => sl.assignee_type === 'dept' && sl.assignee === user.department);
+}
+
+// Slot mana yang dipakai pada penekanan tombol tandatangani ke-n: slot pertama untuk
+// TTD pertama orang itu, slot kedua untuk TTD berikutnya, dan seterusnya. Setelah
+// seluruh slotnya terpakai, penandatangan kembali menempatkan QR secara manual.
+function pickSlotForSigning(doc, user, signaturesSoFarByUser) {
+  const daftar = findSlotsForUser(doc, user);
+  return daftar[signaturesSoFarByUser] || null;
+}
+
+// Posisi TTD hanya boleh diatur SELAMA dokumen belum memiliki tanda tangan sama
+// sekali - begitu ada QR yang tertempel, mengubah tata letaknya akan membuat posisi
+// yang sudah tercetak tidak lagi sesuai rencana. Yang berhak: pengelola dokumen
+// (pengupload/admin) maupun calon penandatangan pertama.
+function canSetSlots(user, doc) {
+  return canManageDocument(user, doc) || canSignDocument(user, doc);
 }
 
 // Siapa yang boleh MENANDATANGANI - sengaja lebih sempit daripada "boleh melihat".
@@ -502,8 +519,14 @@ app.patch('/api/users/:id', requireLogin, requireAdmin, async (req, res) => {
 app.put('/api/documents/:id/slots', requireLogin, async (req, res) => {
   const doc = await db.getDocumentById(req.params.id);
   if (!doc) return res.status(404).json({ error: 'Dokumen tidak ditemukan' });
-  if (!canManageDocument(req.user, doc)) {
+  if (!canSetSlots(req.user, doc)) {
     return res.status(403).json({ error: 'Anda tidak berhak mengatur posisi TTD dokumen ini' });
+  }
+  const sudahAdaTtd = await db.getSignatureCountForDocument(doc.id);
+  if (sudahAdaTtd > 0) {
+    return res.status(409).json({
+      error: 'Posisi TTD tidak bisa diubah lagi karena dokumen ini sudah memiliki tanda tangan'
+    });
   }
   const raw = Array.isArray(req.body.slots) ? req.body.slots : [];
   const slots = raw
@@ -865,8 +888,11 @@ app.get('/api/documents/:id', requireLogin, async (req, res) => {
       can_sign: canSignDocument(req.user, doc),
       // Seluruh slot posisi yang sudah ditetapkan, dan slot milik pengguna ini
       signature_slots: doc.signature_slots || [],
-      my_slot: findSlotForUser(doc, req.user),
-      can_manage: canManageDocument(req.user, doc),
+      // Slot milik pengguna ini yang akan dipakai pada penekanan tombol berikutnya
+      my_slot: pickSlotForSigning(doc, req.user, allSigs.filter(sg => sg.signed_by === req.user.id).length),
+      my_slots: findSlotsForUser(doc, req.user),
+      // Pengaturan posisi hanya terbuka selama dokumen belum bertanda tangan
+      can_set_slots: canSetSlots(req.user, doc) && allSigs.length === 0,
       // Ukuran stempel TTD pertama - penandatangan berikutnya mengikuti ukuran ini
       locked_qr_size: (() => {
         if (allSigs.length === 0) return null;
@@ -947,7 +973,10 @@ app.post('/api/documents/:id/sign', requireLogin, async (req, res) => {
     // Bila pengupload sudah menetapkan posisi untuk penandatangan ini, posisi itulah
     // yang dipakai - bukan koordinat yang dikirim browser. Ditegakkan di server supaya
     // tata letak dokumen tetap seragam walau permintaan dikirim langsung ke API.
-    const slot = findSlotForUser(doc, req.user);
+    // Diambil sekali di sini lalu dipakai ulang untuk pemilihan slot dan penguncian ukuran
+    const existingSigs = await db.getAllSignaturesForDocument(doc.id);
+    const ttdSayaSebelumnya = existingSigs.filter(sg => sg.signed_by === req.user.id).length;
+    const slot = pickSlotForSigning(doc, req.user, ttdSayaSebelumnya);
     if (slot) {
       qr_x = slot.x;
       qr_y = slot.y;
@@ -960,7 +989,6 @@ app.post('/api/documents/:id/sign', requireLogin, async (req, res) => {
     // bebas menentukan POSISI, tapi ukurannya diabaikan dan diganti ukuran awal.
     // Penegakan dilakukan di server, bukan hanya di antarmuka, agar tetap berlaku
     // walau permintaan dikirim langsung ke API.
-    const existingSigs = await db.getAllSignaturesForDocument(doc.id);
     if (existingSigs.length > 0) {
       const firstSig = existingSigs
         .slice()

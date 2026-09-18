@@ -52,6 +52,10 @@
     border-radius: 8px; padding: 6px 10px;
   }
   .slot-row b { color: var(--brand-dark); font-weight: 600; }
+  .slot-seq {
+    font-size: 10px; background: var(--brand-soft); color: var(--brand-dark);
+    padding: 1px 6px; border-radius: 999px;
+  }
   .slot-row .slot-pos { color: var(--ink-faint); font-family: var(--font-mono); font-size: 10.5px; }
   .slot-row button {
     margin: 0 0 0 auto; width: auto; padding: 2px 8px; font-size: 11px;
@@ -138,7 +142,7 @@
       <div id="slotPanel" style="display:none;">
         <hr class="slot-sep">
         <label>Atur posisi TTD penandatangan</label>
-        <p class="slot-help">Tentukan posisi QR untuk tiap penandatangan. Yang sudah diatur tinggal menekan tombol tandatangani tanpa perlu menempatkan QR sendiri.</p>
+        <p class="slot-help">Tentukan posisi QR untuk tiap penandatangan. Yang sudah diatur tinggal menekan tombol tandatangani tanpa perlu menempatkan QR sendiri. Satu orang boleh diberi lebih dari satu posisi, termasuk di halaman berbeda &mdash; tetapkan berulang kali untuk nama yang sama. Pengaturan hanya bisa dilakukan selama dokumen belum memiliki tanda tangan.</p>
         <select id="slotTarget"></select>
         <button class="secondary" onclick="assignSlot()">Tetapkan posisi kotak saat ini</button>
         <div id="slotList" class="slot-list"></div>
@@ -231,13 +235,14 @@ function buildSlotTargets() {
     : '<option value="">Belum ada penandatangan ditetapkan</option>';
 }
 
+// Satu penandatangan boleh punya BEBERAPA posisi, misalnya harus membubuhkan QR di
+// halaman 1 dan halaman 5. Urutannya mengikuti urutan penetapan: posisi pertama
+// dipakai saat ia menandatangani pertama kali, posisi kedua untuk TTD berikutnya.
 function assignSlot() {
   const sel = document.getElementById('slotTarget');
   if (!sel.value) return;
   const [type, value] = sel.value.split('|');
   const label = sel.options[sel.selectedIndex].text;
-  // Satu penandatangan hanya punya satu posisi - penetapan ulang menimpa yang lama.
-  slots = slots.filter(sl => slotKey(sl) !== `${type}:${value}`);
   slots.push({
     assignee_type: type, assignee: value, label,
     page: currentPage, x: qrFrac.x, y: qrFrac.y, size: qrFrac.size
@@ -245,20 +250,28 @@ function assignSlot() {
   renderSlots();
 }
 
-function removeSlot(key) {
-  slots = slots.filter(sl => slotKey(sl) !== key);
+function removeSlot(index) {
+  slots.splice(index, 1);
   renderSlots();
 }
 
 function renderSlots() {
   const list = document.getElementById('slotList');
+  // Nomor urut per penandatangan, supaya jelas mana TTD pertama dan mana berikutnya
+  const urutan = {};
   list.innerHTML = slots.length
-    ? slots.map(sl => `
+    ? slots.map((sl, i) => {
+        const k = slotKey(sl);
+        urutan[k] = (urutan[k] || 0) + 1;
+        const total = slots.filter(x => slotKey(x) === k).length;
+        const ke = total > 1 ? ` <span class="slot-seq">TTD ke-${urutan[k]}</span>` : '';
+        return `
         <div class="slot-row">
-          <b>${esc(sl.label || sl.assignee)}</b>
+          <b>${esc(sl.label || sl.assignee)}</b>${ke}
           <span class="slot-pos">hal ${sl.page} · ${Math.round(sl.x * 100)},${Math.round(sl.y * 100)}</span>
-          <button type="button" onclick="removeSlot('${esc(slotKey(sl))}')">Hapus</button>
-        </div>`).join('')
+          <button type="button" onclick="removeSlot(${i})">Hapus</button>
+        </div>`;
+      }).join('')
     : '<span class="slot-help" style="margin:0;">Belum ada posisi yang ditetapkan.</span>';
   renderSlotMarkers();
 }
@@ -357,8 +370,9 @@ async function loadDoc(isInitial) {
      ${taggedLine}
      ${ttdInfo}`;
 
-  // Panel pengaturan posisi hanya untuk pengupload/pengelola dokumen.
-  if (doc.can_manage) {
+  // Panel pengaturan posisi hanya muncul selama dokumen belum punya tanda tangan.
+  // Setelah ada QR yang tertempel, tata letak tidak boleh diubah lagi.
+  if (doc.can_set_slots) {
     slots = (doc.signature_slots || []).map(sl => ({ ...sl, assignee: String(sl.assignee) }));
     document.getElementById('slotPanel').style.display = 'block';
     buildSlotTargets();
@@ -374,7 +388,10 @@ async function loadDoc(isInitial) {
     positionLocked = true;
     const note = document.getElementById('posLockNote');
     note.style.display = 'block';
-    note.textContent = `Posisi dan ukuran QR sudah ditetapkan oleh pengupload dokumen (halaman ${sl.page}). Anda cukup menekan tombol Tandatangani Dokumen.`;
+    const totalSlot = (doc.my_slots || []).length;
+    note.textContent = totalSlot > 1
+      ? `Posisi dan ukuran QR sudah ditetapkan (halaman ${sl.page}). Anda mendapat ${totalSlot} posisi pada dokumen ini — tekan Tandatangani Dokumen berulang kali, posisi berikutnya akan dipakai otomatis.`
+      : `Posisi dan ukuran QR sudah ditetapkan oleh pengupload dokumen (halaman ${sl.page}). Anda cukup menekan tombol Tandatangani Dokumen.`;
     document.getElementById('qrSize').disabled = true;
     document.getElementById('qrSizeNumber').disabled = true;
     updateQrBox();
