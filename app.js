@@ -744,6 +744,11 @@ app.post('/api/documents', requireLogin, requireActiveUser, upload.single('file'
 // bahwa dokumen telah disahkan, tanggal mulai berlaku, dan siapa yang mengesahkan.
 // Bentuknya kotak bergaris agar terbaca sebagai cap resmi, bukan catatan tambahan.
 // ---------------------------------------------------------------------------
+// Stempel pengesahan dicetak BIRU. Di industri farmasi, tinta biru lazim dipakai
+// untuk tanda tangan dan cap pengesahan agar dokumen asli langsung terbeda dari
+// hasil fotokopi hitam-putih - kebiasaan yang tetap berguna walau dokumennya digital,
+// karena dokumen sah sering dicetak ulang untuk distribusi.
+const APPROVAL_BLUE = { r: 0.04, g: 0.25, b: 0.62 };  // #0A3F9E
 const APPROVAL = {
   heightRatio: 0.42,   // tinggi kotak = 0,42 x lebarnya
   pad: 0.05,
@@ -764,9 +769,10 @@ function formatEffectiveDate(iso) {
 function drawApprovalStamp(page, { fontBold, fontReg, X, T, W, tanggalTeks, pengesah }) {
   const H = W * APPROVAL.heightRatio;
   const pad = APPROVAL.pad * W;
+  const biru = rgb(APPROVAL_BLUE.r, APPROVAL_BLUE.g, APPROVAL_BLUE.b);
   page.drawRectangle({
     x: X, y: T - H, width: W, height: H,
-    color: rgb(1, 1, 1), borderColor: rgb(0.06, 0.15, 0.13), borderWidth: 1.2
+    color: rgb(1, 1, 1), borderColor: biru, borderWidth: 1.4
   });
   const maxW = W - 2 * pad;
   const tulis = (teks, font, ukuranDasar, baseline, warna) => {
@@ -778,23 +784,23 @@ function drawApprovalStamp(page, { fontBold, fontReg, X, T, W, tanggalTeks, peng
     });
   };
   tulis('DOKUMEN SAH', fontBold, APPROVAL.titleFont,
-        T - pad - APPROVAL.titleFont * W, rgb(0.06, 0.15, 0.13));
+        T - pad - APPROVAL.titleFont * W, biru);
   tulis(`Berlaku mulai ${tanggalTeks}`, fontBold, APPROVAL.dateFont,
-        T - pad - (APPROVAL.titleFont + 0.055 + APPROVAL.dateFont) * W, rgb(0, 0, 0));
+        T - pad - (APPROVAL.titleFont + 0.055 + APPROVAL.dateFont) * W, biru);
   tulis('Disahkan oleh:', fontReg, APPROVAL.nameFont,
-        T - pad - (APPROVAL.titleFont + 0.055 + APPROVAL.dateFont + 0.05 + APPROVAL.nameFont) * W, rgb(0.35, 0.4, 0.39));
+        T - pad - (APPROVAL.titleFont + 0.055 + APPROVAL.dateFont + 0.05 + APPROVAL.nameFont) * W, biru);
   tulis(pengesah, fontBold, APPROVAL.nameFont,
-        T - pad - (APPROVAL.titleFont + 0.055 + APPROVAL.dateFont + 0.05 + APPROVAL.nameFont * 2 + 0.025) * W, rgb(0.1, 0.1, 0.1));
+        T - pad - (APPROVAL.titleFont + 0.055 + APPROVAL.dateFont + 0.05 + APPROVAL.nameFont * 2 + 0.025) * W, biru);
 }
 
 function buildApprovalSvg({ W, H, tanggalTeks, pengesah }) {
   const f = (r) => Math.max(6, r * W);
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
-  <rect x="1" y="1" width="${W - 2}" height="${H - 2}" fill="#ffffff" stroke="#0F2620" stroke-width="2"/>
-  <text x="${W / 2}" y="${H * 0.30}" text-anchor="middle" font-family="DejaVu Sans, Arial, sans-serif" font-weight="bold" font-size="${f(APPROVAL.titleFont)}" fill="#0F2620">DOKUMEN SAH</text>
-  <text x="${W / 2}" y="${H * 0.55}" text-anchor="middle" font-family="DejaVu Sans, Arial, sans-serif" font-weight="bold" font-size="${f(APPROVAL.dateFont)}" fill="#000000">Berlaku mulai ${escapeXml(tanggalTeks)}</text>
-  <text x="${W / 2}" y="${H * 0.74}" text-anchor="middle" font-family="DejaVu Sans, Arial, sans-serif" font-size="${f(APPROVAL.nameFont)}" fill="#5A6A66">Disahkan oleh:</text>
-  <text x="${W / 2}" y="${H * 0.90}" text-anchor="middle" font-family="DejaVu Sans, Arial, sans-serif" font-weight="bold" font-size="${f(APPROVAL.nameFont)}" fill="#1a1a1a">${escapeXml(pengesah)}</text>
+  <rect x="1" y="1" width="${W - 2}" height="${H - 2}" fill="#ffffff" stroke="#0A3F9E" stroke-width="2"/>
+  <text x="${W / 2}" y="${H * 0.30}" text-anchor="middle" font-family="DejaVu Sans, Arial, sans-serif" font-weight="bold" font-size="${f(APPROVAL.titleFont)}" fill="#0A3F9E">DOKUMEN SAH</text>
+  <text x="${W / 2}" y="${H * 0.55}" text-anchor="middle" font-family="DejaVu Sans, Arial, sans-serif" font-weight="bold" font-size="${f(APPROVAL.dateFont)}" fill="#0A3F9E">Berlaku mulai ${escapeXml(tanggalTeks)}</text>
+  <text x="${W / 2}" y="${H * 0.74}" text-anchor="middle" font-family="DejaVu Sans, Arial, sans-serif" font-size="${f(APPROVAL.nameFont)}" fill="#0A3F9E">Disahkan oleh:</text>
+  <text x="${W / 2}" y="${H * 0.90}" text-anchor="middle" font-family="DejaVu Sans, Arial, sans-serif" font-weight="bold" font-size="${f(APPROVAL.nameFont)}" fill="#0A3F9E">${escapeXml(pengesah)}</text>
 </svg>`;
 }
 
