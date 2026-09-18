@@ -938,3 +938,17 @@ header .notif-panel a:hover, .notif-head a:hover {
   color: var(--ink); resize: vertical; box-sizing: border-box;
 }
 #delReason:focus { outline: none; border-color: var(--brand); }
+
+.doc-approved {
+  display: inline-block; margin-top: 5px; font-size: 10.5px; font-weight: 600;
+  background: var(--green-soft); color: var(--green);
+  padding: 2px 9px; border-radius: 999px;
+}
+/* Baris personil non-aktif pada halaman admin */
+.user-inactive td { opacity: 0.55; }
+.status-pill {
+  display: inline-block; font-size: 10.5px; font-weight: 600;
+  padding: 2px 9px; border-radius: 999px; white-space: nowrap;
+}
+.status-pill.aktif { background: var(--green-soft); color: var(--green); }
+.status-pill.nonaktif { background: var(--slate-soft); color: var(--slate); }

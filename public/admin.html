@@ -82,7 +82,7 @@
     <div class="panel-kop"><h2>Daftar Personil</h2><span class="kop-badge" id="userCount">0 personil</span></div>
     <div class="table-hint">← Geser tabel ke samping untuk melihat kolom Aksi →</div>
     <div class="table-scroll"><table>
-      <thead><tr><th>Username</th><th>Nama</th><th>Jabatan</th><th>Departemen</th><th>Peran</th><th>Aksi</th></tr></thead>
+      <thead><tr><th>Username</th><th>Nama</th><th>Jabatan</th><th>Departemen</th><th>Peran</th><th>Status</th><th>Aksi</th></tr></thead>
       <tbody id="userList"></tbody>
     </table></div>
   </div>
@@ -166,10 +166,17 @@ function renderUserRows() {
     const tr = document.createElement('tr');
     tr.id = `user-row-${u.id}`;
     const roleBadge = u.role === 'admin' ? '<span class="badge admin">Admin</span>' : '<span class="badge">Personil</span>';
-    tr.innerHTML = `<td>${u.username}</td><td>${u.full_name}</td><td>${u.jabatan || '-'}</td><td>${u.department || '-'}</td><td>${roleBadge}</td>
+    // Akun lama belum punya field active - dianggap aktif.
+    const aktif = u.active !== false;
+    if (!aktif) tr.className = 'user-inactive';
+    const statusPill = aktif
+      ? '<span class="status-pill aktif">Aktif</span>'
+      : '<span class="status-pill nonaktif">Non-aktif</span>';
+    tr.innerHTML = `<td>${u.username}</td><td>${u.full_name}</td><td>${u.jabatan || '-'}</td><td>${u.department || '-'}</td><td>${roleBadge}</td><td>${statusPill}</td>
       <td class="actions-cell">
         <button class="secondary" onclick="editUserRow(${u.id})">Edit</button>
         <button class="secondary" onclick="resetPassword(${u.id}, '${u.username}')">Reset Password</button>
+        <button class="secondary" onclick="toggleActive(${u.id}, ${aktif ? 'false' : 'true'}, '${u.username}')">${aktif ? 'Nonaktifkan' : 'Aktifkan'}</button>
         <button class="danger" onclick="deleteUser(${u.id}, '${u.username}')">Hapus</button>
       </td>`;
     tbody.appendChild(tr);
@@ -190,10 +197,28 @@ function editUserRow(userId) {
         <option value="personil" ${u.role === 'personil' ? 'selected' : ''}>Personil</option>
         <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option>
       </select></td>
+    <td></td>
     <td class="actions-cell">
       <button class="primary" style="width:auto; padding:6px 12px; font-size:12px;" onclick="saveUserEdit(${userId})">Simpan</button>
       <button class="secondary" onclick="renderUserRows()">Batal</button>
     </td>`;
+}
+
+// Menonaktifkan akun TIDAK menghapus tanda tangan yang sudah dibubuhkan personil
+// tersebut - seluruh QR-nya tetap sah dan tetap bisa diverifikasi selamanya.
+async function toggleActive(userId, active, username) {
+  const pesan = active
+    ? `Aktifkan kembali akun "${username}"? Personil ini akan bisa login lagi.`
+    : `Nonaktifkan akun "${username}"?\n\nPersonil ini tidak akan bisa login lagi, dan namanya tidak muncul lagi sebagai pilihan penandatangan.\n\nSeluruh tanda tangan yang sudah dibubuhkannya TETAP SAH dan tetap dapat diverifikasi.`;
+  if (!confirm(pesan)) return;
+  const reason = active ? '' : (prompt('Alasan penonaktifan (mis. resign, pindah tugas):') || '').trim();
+  const res = await fetch(`/api/users/${userId}/active`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ active, reason })
+  });
+  const data = await res.json();
+  if (!res.ok) { alert(data.error); return; }
+  loadUsers();
 }
 
 async function saveUserEdit(userId) {

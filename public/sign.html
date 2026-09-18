@@ -139,6 +139,13 @@
       <div class="msg" id="signMsg" style="margin-top:10px;"></div>
       <button class="primary" id="signBtn" onclick="submitSignature()">Tandatangani Dokumen</button>
 
+      <div id="approvePanel" style="display:none;">
+        <label for="effectiveDate">Tanggal mulai berlaku</label>
+        <input type="date" id="effectiveDate">
+        <p class="slot-help">Geser kotak ke posisi stempel pengesahan, lalu tekan tombol di bawah. Stempel ditempelkan pada berkas yang sudah ber-QR, sehingga hasil akhirnya satu berkas: TTD QR + tanggal pengesahan.</p>
+        <button class="primary" id="approveBtn" onclick="submitApproval()">Sahkan Dokumen</button>
+      </div>
+
       <div id="slotPanel" style="display:none;">
         <hr class="slot-sep">
         <label>Atur posisi TTD penandatangan</label>
@@ -181,6 +188,9 @@ let qrFrac = { x: 0.7, y: 0.05, size: 0.12 };
 let dragging = false;
 // Bila pengupload sudah menetapkan posisi, kotak tidak boleh digeser lagi.
 let positionLocked = false;
+// Halaman ini dipakai untuk dua hal: membubuhkan TTD, dan (bagi manager)
+// menempelkan stempel pengesahan. Bedanya hanya pada apa yang ditempel.
+const modeApprove = new URLSearchParams(location.search).get('mode') === 'approve';
 
 // HARUS sama persis dengan konstanta STAMP di app.js - ini yang membuat kotak
 // template di layar berukuran sama dengan hasil cetaknya. QR memakai qrRatio dari
@@ -212,6 +222,43 @@ async function checkAuth() {
   // benar-benar sama dengan yang akan tercetak nanti.
   document.getElementById('stampName').textContent = data.user.full_name || data.user.username;
   updateQrBox();
+}
+
+async function submitApproval() {
+  const btn = document.getElementById('approveBtn');
+  const msgEl = document.getElementById('signMsg');
+  const tanggal = document.getElementById('effectiveDate').value;
+  if (!tanggal) {
+    msgEl.textContent = 'Tanggal mulai berlaku wajib diisi.';
+    msgEl.className = 'msg error';
+    msgEl.style.display = 'block';
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = 'Memproses...';
+  try {
+    const res = await fetch(`/api/documents/${docId}/approve`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        effective_date: tanggal,
+        x: qrFrac.x, y: qrFrac.y, size: qrFrac.size, page_number: currentPage
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    msgEl.innerHTML = 'Dokumen berhasil disahkan. Berkas ber-QR sudah ditimpa dengan versi yang memuat tanggal pengesahan.'
+      + (data.driveError ? '<br><b>Catatan:</b> gagal mengunggah ke Google Drive — ' + esc(data.driveError) : '');
+    msgEl.className = 'msg success';
+    msgEl.style.display = 'block';
+    btn.textContent = 'Dokumen sudah disahkan';
+    await loadDoc(false);
+  } catch (err) {
+    msgEl.textContent = err.message;
+    msgEl.className = 'msg error';
+    msgEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Sahkan Dokumen';
+  }
 }
 
 // ===================== POSISI TTD YANG DITETAPKAN =====================
@@ -369,6 +416,27 @@ async function loadDoc(isInitial) {
      ${req.length ? `<div><b>Wajib TTD dari:</b> ${req.join(', ')}</div>` : ''}
      ${taggedLine}
      ${ttdInfo}`;
+
+  // Mode pengesahan: sembunyikan seluruh perangkat TTD, tampilkan panel pengesahan.
+  if (modeApprove) {
+    document.getElementById('signBtn').style.display = 'none';
+    document.getElementById('slotPanel').style.display = 'none';
+    document.getElementById('approvePanel').style.display = 'block';
+    document.getElementById('stampName').textContent = 'DOKUMEN SAH';
+    document.getElementById('stampTime').textContent = 'Berlaku mulai ...';
+    document.getElementById('stampQr').style.display = 'none';
+    if (!doc.can_approve) {
+      const btn = document.getElementById('approveBtn');
+      btn.disabled = true;
+      btn.textContent = 'Hanya manager yang dapat mengesahkan';
+    }
+    if (doc.approved_at) {
+      const btn = document.getElementById('approveBtn');
+      btn.disabled = true;
+      btn.textContent = 'Dokumen sudah disahkan';
+    }
+    return;
+  }
 
   // Panel pengaturan posisi hanya muncul selama dokumen belum punya tanda tangan.
   // Setelah ada QR yang tertempel, tata letak tidak boleh diubah lagi.
@@ -675,7 +743,17 @@ async function submitSignature() {
 
 // Jam di kotak template berjalan real-time supaya jelas bahwa yang tercetak nanti
 // adalah waktu saat tombol Tandatangani ditekan, bukan waktu halaman dibuka.
-function tickStampClock() { document.getElementById('stampTime').textContent = formatNowWIB(); }
+function tickStampClock() {
+  // Di mode pengesahan, kotak pratinjau menampilkan tanggal berlaku, bukan jam berjalan
+  if (modeApprove) {
+    const v = document.getElementById('effectiveDate').value;
+    document.getElementById('stampTime').textContent = v
+      ? `Berlaku mulai ${new Date(v + 'T00:00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}`
+      : 'Berlaku mulai ...';
+    return;
+  }
+  document.getElementById('stampTime').textContent = formatNowWIB();
+}
 tickStampClock();
 setInterval(tickStampClock, 1000);
 

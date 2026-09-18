@@ -200,6 +200,18 @@ async function logExpiredSession(req) {
   } catch (e) { /* token tidak bisa dibaca - tidak ada yang bisa dicatat */ }
 }
 
+// Memeriksa status akun pada tiap permintaan akan menambah satu kueri ke basis data,
+// jadi status non-aktif ditegakkan saat login dan saat aksi penting. Sesi yang sedang
+// berjalan tetap berakhir sendiri paling lama 30 menit setelah akun dinonaktifkan.
+async function requireActiveUser(req, res, next) {
+  const fresh = await db.getUserById(req.user.id);
+  if (!fresh || fresh.active === false) {
+    res.clearCookie('auth_token');
+    return res.status(403).json({ error: 'Akun Anda sudah dinonaktifkan. Hubungi admin sistem.', expired: true });
+  }
+  next();
+}
+
 function requireLogin(req, res, next) {
   const user = getUserFromRequest(req);
   if (!user) {
@@ -228,6 +240,16 @@ app.post('/api/login', async (req, res) => {
   const user = await db.getUserByUsername(username);
   if (!user || !bcrypt.compareSync(password, user.password_hash)) {
     return res.status(401).json({ error: 'Username atau password salah' });
+  }
+  // Akun non-aktif (mis. personil yang sudah resign) tidak bisa masuk, tetapi seluruh
+  // tanda tangannya tetap tersimpan dan tetap sah. `active !== false` dipakai agar
+  // akun lama yang belum punya field ini tetap dianggap aktif.
+  if (user.active === false) {
+    await db.logAudit({
+      type: 'login_ditolak', user_id: user.id, username: user.username, full_name: user.full_name,
+      reason: 'akun non-aktif'
+    });
+    return res.status(403).json({ error: 'Akun Anda sudah dinonaktifkan. Hubungi admin sistem.' });
   }
   const payload = {
     id: user.id, username: user.username, full_name: user.full_name,
@@ -333,6 +355,13 @@ function canDeleteDocument(user, doc) {
   return doc.uploaded_by === user.id;
 }
 
+// Pengesahan dokumen adalah kewenangan manajerial: admin, atau siapa pun yang
+// jabatannya mengandung kata "manager" (Manager, Assistant Manager, Plant Manager).
+function canApproveDocument(user) {
+  if (user.role === 'admin') return true;
+  return !!(user.jabatan && /manager/i.test(user.jabatan));
+}
+
 // Audit trail terbuka untuk: admin, siapa pun yang jabatannya mengandung "manager",
 // dan seluruh personil Quality Assurance - QA memang bertugas menelusuri riwayat
 // dokumen, jadi mereka perlu bisa melihat sekaligus mengunduhnya.
@@ -354,6 +383,8 @@ app.get('/api/users/directory', requireLogin, async (req, res) => {
   const users = await db.listUsers();
   res.json({
     users: users
+      // Akun non-aktif tidak ditawarkan sebagai penandatangan baru
+      .filter(u => u.active !== false)
       .map(u => ({ id: u.id, username: u.username, full_name: u.full_name, department: u.department, jabatan: u.jabatan || null }))
       // Urut A-Z murni berdasarkan nama, bukan dikelompokkan per departemen dulu -
       // untuk memilih orang, mata mencari nama, bukan departemen.
@@ -386,9 +417,10 @@ app.post('/api/notifications/clear', requireLogin, async (req, res) => {
 // dari perbuatannya sendiri.
 async function resolveNotificationTargets({ departments = [], userIds = [], excludeUserId = null }) {
   const all = await db.listUsers();
-  const ids = new Set(userIds.filter(v => v != null));
+  const aktif = new Set(all.filter(u => u.active !== false).map(u => u.id));
+  const ids = new Set(userIds.filter(v => v != null && aktif.has(Number(v))));
   for (const u of all) {
-    if (departments.includes(u.department)) ids.add(u.id);
+    if (u.active !== false && departments.includes(u.department)) ids.add(u.id);
   }
   if (excludeUserId != null) ids.delete(excludeUserId);
   return [...ids];
@@ -550,6 +582,29 @@ app.put('/api/documents/:id/slots', requireLogin, async (req, res) => {
   res.json({ ok: true, count: slots.length });
 });
 
+// Mengaktifkan / menonaktifkan akun. Dipakai untuk personil yang resign atau pindah
+// tugas - lebih tepat daripada menghapus akun, karena seluruh jejak tanda tangannya
+// tetap utuh dan tetap dapat diverifikasi.
+app.patch('/api/users/:id/active', requireLogin, requireAdmin, async (req, res) => {
+  try {
+    const target = Number(req.params.id);
+    const active = !!req.body.active;
+    if (target === req.user.id && !active) {
+      return res.status(400).json({ error: 'Anda tidak bisa menonaktifkan akun Anda sendiri' });
+    }
+    const user = await db.setUserActive(target, active);
+    await db.logAudit({
+      type: active ? 'activate_user' : 'deactivate_user',
+      user_id: req.user.id, username: req.user.username, full_name: req.user.full_name,
+      doc_name: `${user.username} — ${user.full_name}`,
+      reason: String(req.body.reason || '').trim() || null
+    });
+    res.json({ ok: true, active });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
 app.get('/api/departments', requireLogin, async (req, res) => {
   res.json({ departments: await db.listDepartments() });
 });
@@ -585,7 +640,7 @@ app.post('/api/departments/:name/drive-folder', requireLogin, requireAdmin, asyn
 });
 
 // ---------- DOCUMENT UPLOAD ----------
-app.post('/api/documents', requireLogin, upload.single('file'), async (req, res) => {
+app.post('/api/documents', requireLogin, requireActiveUser, upload.single('file'), async (req, res) => {
   try {
     const { doc_name, doc_number, department } = req.body;
     if (!doc_name || !doc_number || !department) {
@@ -681,6 +736,67 @@ app.post('/api/documents', requireLogin, upload.single('file'), async (req, res)
     res.status(500).json({ error: 'Gagal memproses dokumen' });
   }
 });
+
+
+// ---------------------------------------------------------------------------
+// Stempel pengesahan dokumen
+// Berbeda dengan stempel TTD, stempel ini tidak memuat QR - isinya pernyataan
+// bahwa dokumen telah disahkan, tanggal mulai berlaku, dan siapa yang mengesahkan.
+// Bentuknya kotak bergaris agar terbaca sebagai cap resmi, bukan catatan tambahan.
+// ---------------------------------------------------------------------------
+const APPROVAL = {
+  heightRatio: 0.42,   // tinggi kotak = 0,42 x lebarnya
+  pad: 0.05,
+  titleFont: 0.095,
+  dateFont: 0.085,
+  nameFont: 0.062
+};
+
+// "2026-10-01" -> "1 Oktober 2026"
+function formatEffectiveDate(iso) {
+  const bulan = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+                 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || '').trim());
+  if (!m) return String(iso || '');
+  return `${Number(m[3])} ${bulan[Number(m[2]) - 1]} ${m[1]}`;
+}
+
+function drawApprovalStamp(page, { fontBold, fontReg, X, T, W, tanggalTeks, pengesah }) {
+  const H = W * APPROVAL.heightRatio;
+  const pad = APPROVAL.pad * W;
+  page.drawRectangle({
+    x: X, y: T - H, width: W, height: H,
+    color: rgb(1, 1, 1), borderColor: rgb(0.06, 0.15, 0.13), borderWidth: 1.2
+  });
+  const maxW = W - 2 * pad;
+  const tulis = (teks, font, ukuranDasar, baseline, warna) => {
+    const bersih = sanitizeWinAnsi(teks);
+    const size = fitPdfFontSize(font, bersih, maxW, ukuranDasar * W);
+    page.drawText(bersih, {
+      x: X + (W - font.widthOfTextAtSize(bersih, size)) / 2,
+      y: baseline, size, font, color: warna
+    });
+  };
+  tulis('DOKUMEN SAH', fontBold, APPROVAL.titleFont,
+        T - pad - APPROVAL.titleFont * W, rgb(0.06, 0.15, 0.13));
+  tulis(`Berlaku mulai ${tanggalTeks}`, fontBold, APPROVAL.dateFont,
+        T - pad - (APPROVAL.titleFont + 0.055 + APPROVAL.dateFont) * W, rgb(0, 0, 0));
+  tulis('Disahkan oleh:', fontReg, APPROVAL.nameFont,
+        T - pad - (APPROVAL.titleFont + 0.055 + APPROVAL.dateFont + 0.05 + APPROVAL.nameFont) * W, rgb(0.35, 0.4, 0.39));
+  tulis(pengesah, fontBold, APPROVAL.nameFont,
+        T - pad - (APPROVAL.titleFont + 0.055 + APPROVAL.dateFont + 0.05 + APPROVAL.nameFont * 2 + 0.025) * W, rgb(0.1, 0.1, 0.1));
+}
+
+function buildApprovalSvg({ W, H, tanggalTeks, pengesah }) {
+  const f = (r) => Math.max(6, r * W);
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
+  <rect x="1" y="1" width="${W - 2}" height="${H - 2}" fill="#ffffff" stroke="#0F2620" stroke-width="2"/>
+  <text x="${W / 2}" y="${H * 0.30}" text-anchor="middle" font-family="DejaVu Sans, Arial, sans-serif" font-weight="bold" font-size="${f(APPROVAL.titleFont)}" fill="#0F2620">DOKUMEN SAH</text>
+  <text x="${W / 2}" y="${H * 0.55}" text-anchor="middle" font-family="DejaVu Sans, Arial, sans-serif" font-weight="bold" font-size="${f(APPROVAL.dateFont)}" fill="#000000">Berlaku mulai ${escapeXml(tanggalTeks)}</text>
+  <text x="${W / 2}" y="${H * 0.74}" text-anchor="middle" font-family="DejaVu Sans, Arial, sans-serif" font-size="${f(APPROVAL.nameFont)}" fill="#5A6A66">Disahkan oleh:</text>
+  <text x="${W / 2}" y="${H * 0.90}" text-anchor="middle" font-family="DejaVu Sans, Arial, sans-serif" font-weight="bold" font-size="${f(APPROVAL.nameFont)}" fill="#1a1a1a">${escapeXml(pengesah)}</text>
+</svg>`;
+}
 
 // ---------------------------------------------------------------------------
 // UPLOAD BERKAS BESAR - langsung dari browser ke Google Drive
@@ -893,6 +1009,7 @@ app.get('/api/documents/:id', requireLogin, async (req, res) => {
       my_slots: findSlotsForUser(doc, req.user),
       // Pengaturan posisi hanya terbuka selama dokumen belum bertanda tangan
       can_set_slots: canSetSlots(req.user, doc) && allSigs.length === 0,
+      can_approve: canApproveDocument(req.user),
       // Ukuran stempel TTD pertama - penandatangan berikutnya mengikuti ukuran ini
       locked_qr_size: (() => {
         if (allSigs.length === 0) return null;
@@ -935,7 +1052,7 @@ app.get('/api/documents/:id/file', requireLogin, async (req, res) => {
 });
 
 // ---------- SIGNING (place QR + embed) ----------
-app.post('/api/documents/:id/sign', requireLogin, async (req, res) => {
+app.post('/api/documents/:id/sign', requireLogin, requireActiveUser, async (req, res) => {
   let lockHeld = false;
   try {
     let doc = await db.getDocumentById(req.params.id);
@@ -1113,6 +1230,11 @@ app.post('/api/documents/:id/sign', requireLogin, async (req, res) => {
       id: signatureId, document_id: doc.id, signed_by: req.user.id,
       signer_department: req.user.department,
       qr_x, qr_y, qr_size, page_number: page_number || 1,
+      // Identitas direkam menyatu dengan tanda tangannya. Kalau akun penandatangan
+      // kelak dinonaktifkan, diubah, atau dihapus, halaman verifikasi tetap
+      // menampilkan siapa yang menandatangani pada saat itu.
+      signer_name: req.user.full_name,
+      signer_jabatan: req.user.jabatan || null,
       signed_at: signedAt // sama persis dengan jam yang tercetak di stempel
     });
 
@@ -1294,6 +1416,8 @@ app.get('/api/audit-log/export', requireLogin, requireAuditAccess, async (req, r
     archive_document: 'Arsipkan Dokumen', unarchive_document: 'Kembalikan dari Arsip',
     delete_document: 'Hapus Dokumen', session_expired: 'Sesi Berakhir',
     change_username: 'Ganti Username', create_user: 'Buat Akun', set_slots: 'Atur Posisi TTD',
+    activate_user: 'Aktifkan Akun', deactivate_user: 'Nonaktifkan Akun',
+    login_ditolak: 'Login Ditolak (akun non-aktif)', approve_document: 'Pengesahan Dokumen',
     delete_user: 'Hapus Akun', reset_password: 'Reset Password oleh Admin',
     update_access: 'Ubah Hak Akses'
   };
@@ -1315,6 +1439,133 @@ app.get('/api/audit-log/export', requireLogin, requireAuditAccess, async (req, r
   res.setHeader('Content-Disposition', `attachment; filename="audit-trail-${stamp}.csv"`);
   // BOM UTF-8 supaya Excel di Windows membaca huruf beraksen dengan benar.
   res.send('\uFEFF' + csv);
+});
+
+// ---------- PENGESAHAN DOKUMEN ----------
+// Menempelkan stempel pengesahan (tanggal berlaku + pengesah) pada dokumen yang
+// SUDAH lengkap ditandatangani. Berkas ber-QR ditimpa dengan versi yang sudah
+// disahkan, sehingga hasil akhirnya satu berkas: QR TTD + tanggal pengesahan.
+app.post('/api/documents/:id/approve', requireLogin, requireActiveUser, async (req, res) => {
+  let lockHeld = false;
+  try {
+    const doc = await db.getDocumentById(req.params.id);
+    if (!doc) return res.status(404).json({ error: 'Dokumen tidak ditemukan' });
+    if (!canApproveDocument(req.user)) {
+      return res.status(403).json({ error: 'Hanya manager ke atas yang dapat mengesahkan dokumen' });
+    }
+    if (doc.approved_at) {
+      return res.status(409).json({ error: 'Dokumen ini sudah disahkan sebelumnya' });
+    }
+
+    const allSigs = await db.getAllSignaturesForDocument(doc.id);
+    if (allSigs.length === 0) {
+      return res.status(400).json({ error: 'Dokumen belum ditandatangani' });
+    }
+    // Hanya dokumen yang seluruh pihaknya sudah TTD yang boleh disahkan - mengesahkan
+    // dokumen yang belum lengkap sama saja menyatakan berlaku sesuatu yang belum disetujui.
+    const reqUsers = doc.allowed_users || [];
+    const reqDepts = (doc.allowed_departments && doc.allowed_departments.length > 0)
+      ? doc.allowed_departments
+      : (reqUsers.length > 0 ? [] : [doc.department]);
+    const signedDepts = [...new Set(allSigs.map(sg => sg.signer_department).filter(Boolean))];
+    const signedUsers = [...new Set(allSigs.map(sg => sg.signed_by).filter(v => v != null))];
+    const lengkap = reqDepts.every(d => signedDepts.includes(d)) && reqUsers.every(u => signedUsers.includes(u));
+    if (!lengkap) {
+      return res.status(400).json({ error: 'Dokumen belum lengkap ditandatangani semua pihak' });
+    }
+
+    const { effective_date, x, y, size, page_number } = req.body;
+    if (!effective_date) return res.status(400).json({ error: 'Tanggal berlaku wajib diisi' });
+    if (x == null || y == null || size == null) {
+      return res.status(400).json({ error: 'Posisi stempel pengesahan belum ditentukan' });
+    }
+
+    // Dikunci seperti proses TTD: pengesahan juga menulis ulang berkasnya.
+    lockHeld = await db.acquireSignLock(doc.id);
+    if (!lockHeld) {
+      return res.status(409).json({ error: 'Dokumen sedang diproses. Tunggu beberapa detik lalu coba lagi.' });
+    }
+
+    const sourceDriveFileId = doc.drive_file_id || doc.drive_original_file_id;
+    let sourceBytes;
+    if (gdrive.isConfigured() && sourceDriveFileId) {
+      sourceBytes = await gdrive.downloadFileBuffer(sourceDriveFileId);
+    } else {
+      const baseFilename = doc.signed_filename || doc.stored_filename;
+      if (!baseFilename) return res.status(404).json({ error: 'Berkas dokumen tidak tersedia' });
+      const baseDir = doc.signed_filename ? SIGNED_DIR : UPLOAD_DIR;
+      sourceBytes = fs.readFileSync(path.join(baseDir, baseFilename));
+    }
+
+    const approvedAt = new Date().toISOString();
+    const outFilename = doc.signed_filename || `${doc.id}-signed${path.extname(doc.original_filename || '.pdf')}`;
+    const outPath = path.join(SIGNED_DIR, outFilename);
+    const tanggalTeks = formatEffectiveDate(effective_date);
+    const pengesah = sanitizeWinAnsi(`${req.user.full_name}${req.user.jabatan ? ' — ' + req.user.jabatan : ''}`);
+
+    if (doc.file_type === 'pdf') {
+      const pdfDoc = await PDFDocument.load(sourceBytes);
+      const pages = pdfDoc.getPages();
+      const page = pages[Math.min(Math.max(1, Number(page_number) || 1), pages.length) - 1];
+      const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+      const fontReg = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      const { width: pw, height: ph } = page.getSize();
+      const W = Number(size) * pw;
+      const X = Number(x) * pw;
+      const T = ph - (Number(y) * ph);
+      drawApprovalStamp(page, { fontBold, fontReg, X, T, W, tanggalTeks, pengesah });
+      fs.writeFileSync(outPath, await pdfDoc.save());
+    } else {
+      const sharpLib = require('sharp');
+      const base = sharpLib(sourceBytes);
+      const meta = await base.metadata();
+      const W = Math.max(120, Math.round(Number(size) * meta.width));
+      const H = Math.round(W * 0.42);
+      const left = Math.max(0, Math.min(Math.round(Number(x) * meta.width), meta.width - W));
+      const top = Math.max(0, Math.min(Math.round(Number(y) * meta.height), meta.height - H));
+      const svg = Buffer.from(buildApprovalSvg({ W, H, tanggalTeks, pengesah }));
+      await base.composite([{ input: svg, left, top }]).toFile(outPath);
+    }
+
+    let driveInfo = null, driveError = null;
+    if (gdrive.isConfigured()) {
+      try {
+        driveInfo = await gdrive.updateSignedDocument({
+          fileId: doc.drive_file_id,
+          filePath: outPath,
+          fileName: `${doc.doc_number} - ${doc.doc_name}${path.extname(outFilename)}`,
+          department: doc.department
+        });
+      } catch (e) {
+        driveError = e.message;
+        console.error('Gagal mengunggah dokumen sah ke Drive:', e.message);
+      }
+    }
+
+    await db.setDocumentApproval(doc.id, {
+      approved_at: approvedAt,
+      approved_by: req.user.id,
+      approved_by_name: req.user.full_name,
+      approved_by_jabatan: req.user.jabatan || null,
+      effective_date,
+      signed_filename: outFilename,
+      ...(driveInfo ? { drive_file_id: driveInfo.fileId, drive_view_link: driveInfo.webViewLink } : {})
+    });
+
+    await db.logAudit({
+      type: 'approve_document', user_id: req.user.id, username: req.user.username,
+      full_name: req.user.full_name, document_id: doc.id,
+      doc_name: doc.doc_name, doc_number: doc.doc_number,
+      reason: `Tanggal berlaku ${tanggalTeks}`
+    });
+
+    res.json({ ok: true, approved_at: approvedAt, effective_date, driveError });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Gagal mengesahkan dokumen: ' + e.message });
+  } finally {
+    if (lockHeld) await db.releaseSignLock(req.params.id).catch(() => {});
+  }
 });
 
 // ---------- HALAMAN VERIFIKASI PUBLIK (endpoint data) ----------

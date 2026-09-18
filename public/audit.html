@@ -61,7 +61,11 @@ const LABELS = {
   delete_user: ['Hapus Akun', 'logout'],
   reset_password: ['Reset Password oleh Admin', 'logout'],
   update_access: ['Ubah Hak Akses', 'upload_document'],
-  set_slots: ['Atur Posisi TTD', 'sign_document']
+  set_slots: ['Atur Posisi TTD', 'sign_document'],
+  activate_user: ['Aktifkan Akun', 'upload_document'],
+  deactivate_user: ['Nonaktifkan Akun', 'logout'],
+  login_ditolak: ['Login Ditolak', 'logout'],
+  approve_document: ['Pengesahan Dokumen', 'sign_document']
 };
 
 function downloadCsv() {
@@ -93,7 +97,10 @@ function detailFor(entry) {
     create_user: 'akun baru dibuat oleh admin',
     delete_user: 'akun dihapus permanen oleh admin',
     reset_password: 'kata sandi diatur ulang oleh admin',
-    update_access: 'perubahan departemen/peran oleh admin'
+    update_access: 'perubahan departemen/peran oleh admin',
+    activate_user: 'akun diaktifkan kembali oleh admin',
+    deactivate_user: 'akun dinonaktifkan oleh admin — tanda tangan yang sudah ada tetap sah',
+    login_ditolak: 'percobaan masuk dengan akun non-aktif'
   };
   if (CATATAN_AKUN[entry.type]) {
     parts.push(`<span class="detail-note">${CATATAN_AKUN[entry.type]}</span>`);
@@ -106,6 +113,9 @@ function detailFor(entry) {
       ? '<span class="detail-warn">dihapus permanen — dokumen ini sudah punya tanda tangan</span>'
       : '<span class="detail-note">dihapus permanen</span>');
     if (entry.reason) parts.push(`<span class="detail-reason">Alasan: ${esc(entry.reason)}</span>`);
+  }
+  if (['approve_document', 'deactivate_user'].includes(entry.type) && entry.reason) {
+    parts.push(`<span class="detail-reason">${esc(entry.reason)}</span>`);
   }
   if (entry.type === 'set_slots' && entry.reason) {
     parts.push(`<span class="detail-note">${esc(entry.reason)}</span>`);

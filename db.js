@@ -403,6 +403,28 @@ module.exports = {
   // Menyimpan "slot" posisi tanda tangan yang sudah ditentukan pengupload:
   // setiap penandatangan punya kotak posisinya sendiri, sehingga saat menandatangani
   // mereka tinggal menekan tombol tanpa perlu menempatkan QR satu per satu.
+  // Menonaktifkan akun TANPA menghapusnya: personil yang sudah tidak bekerja
+  // kehilangan akses masuk, tetapi seluruh tanda tangannya tetap utuh dan tetap
+  // dapat diverifikasi. Ini cara yang benar untuk personil resign - menghapus akun
+  // menghilangkan jejak yang justru dibutuhkan saat audit.
+  async setUserActive(userId, active) {
+    await ensureSeeded();
+    if (KV_CONFIGURED) {
+      const raw = await kv.hget(K.users, String(userId));
+      if (!raw) throw new Error('User tidak ditemukan');
+      const user = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      user.active = !!active;
+      await kv.hset(K.users, { [userId]: JSON.stringify(user) });
+      return user;
+    }
+    const store = loadFileStore();
+    const user = store.users.find(u => u.id === userId);
+    if (!user) throw new Error('User tidak ditemukan');
+    user.active = !!active;
+    persistFileStore();
+    return user;
+  },
+
   async setDocumentSlots(id, slots) {
     await ensureSeeded();
     if (KV_CONFIGURED) {
@@ -416,6 +438,22 @@ module.exports = {
     const store = loadFileStore();
     const doc = store.documents.find(d => d.id === id);
     if (doc) { doc.signature_slots = slots; persistFileStore(); }
+  },
+
+  // Menyimpan data pengesahan dokumen (tanggal berlaku, pengesah, dan posisi stempel).
+  async setDocumentApproval(id, approval) {
+    await ensureSeeded();
+    if (KV_CONFIGURED) {
+      const raw = await kv.hget(K.documents, id);
+      if (!raw) return;
+      const doc = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      Object.assign(doc, approval);
+      await kv.hset(K.documents, { [id]: JSON.stringify(doc) });
+      return;
+    }
+    const store = loadFileStore();
+    const doc = store.documents.find(d => d.id === id);
+    if (doc) { Object.assign(doc, approval); persistFileStore(); }
   },
 
   async setDocumentArchived(id, archived) {
@@ -590,9 +628,12 @@ module.exports = {
         signed_filename: doc ? doc.signed_filename : null,
         file_type: doc ? doc.file_type : null,
         drive_view_link: doc ? (doc.drive_view_link || null) : null,
-        signer_name: signer ? signer.full_name : 'Unknown',
-        signer_department: signer ? signer.department : null,
-        signer_jabatan: signer ? (signer.jabatan || null) : null
+        // Identitas yang direkam saat TTD dipakai lebih dulu. Data akun bisa berubah
+        // atau akunnya dihapus, sedangkan tanda tangan harus tetap menunjukkan siapa
+        // yang menandatangani PADA SAAT ITU.
+        signer_name: sig.signer_name || (signer ? signer.full_name : 'Unknown'),
+        signer_department: sig.signer_department || (signer ? signer.department : null),
+        signer_jabatan: sig.signer_jabatan || (signer ? (signer.jabatan || null) : null)
       };
     }
     const store = loadFileStore();
@@ -608,9 +649,9 @@ module.exports = {
       signed_filename: doc ? doc.signed_filename : null,
       file_type: doc ? doc.file_type : null,
       drive_view_link: doc ? (doc.drive_view_link || null) : null,
-      signer_name: signer ? signer.full_name : 'Unknown',
-      signer_department: signer ? signer.department : null,
-      signer_jabatan: signer ? (signer.jabatan || null) : null
+      signer_name: sig.signer_name || (signer ? signer.full_name : 'Unknown'),
+      signer_department: sig.signer_department || (signer ? signer.department : null),
+      signer_jabatan: sig.signer_jabatan || (signer ? (signer.jabatan || null) : null)
     };
   },
 
