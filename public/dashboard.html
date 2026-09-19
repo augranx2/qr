@@ -135,9 +135,22 @@
             <select id="department" required></select>
           </div>
           <div>
-            <label>File (PDF / JPG / PNG &mdash; maks. 25 MB)</label>
-            <input type="file" id="file" accept=".pdf,.jpg,.jpeg,.png" required>
+            <label>Perlu pengesahan?</label>
+            <select id="requiresApproval">
+              <option value="false">Tidak perlu pengesahan</option>
+              <option value="true">Perlu pengesahan (tanggal berlaku)</option>
+            </select>
+            <div class="dept-hint">Pilih "perlu pengesahan" untuk SOP, protap, dan dokumen lain yang memerlukan tanggal berlaku. Setelah lengkap TTD, dokumen otomatis masuk ke menu Pengesahan milik QA setingkat manager ke atas &mdash; walaupun mereka tidak di-tag sebagai penandatangan.</div>
           </div>
+        </div>
+
+        <label>File Dokumen</label>
+        <div class="dropzone" id="dropzone">
+          <input type="file" id="file" accept=".pdf,.jpg,.jpeg,.png" required hidden>
+          <svg class="dz-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 9 5-5 5 5"></path><path d="M12 4v12"></path></svg>
+          <div class="dz-title">Seret berkas ke sini, atau klik untuk memilih</div>
+          <div class="dz-sub">PDF, JPG, atau PNG &mdash; maksimal 25 MB</div>
+          <div class="dz-file" id="dzFile"></div>
         </div>
 
         <div class="row">
@@ -340,7 +353,12 @@ async function checkAuth() {
   // Harus sama dengan canViewAuditTrail() di app.js: admin, manager, dan QA
   // Menu Pengesahan hanya untuk manager ke atas - harus sama dengan
   // canApproveDocument() di app.js
-  const canApprove = data.user.role === 'admin' || (data.user.jabatan && /manager/i.test(data.user.jabatan));
+  // Harus sama dengan canApproveDocument() di app.js: QA setingkat manager
+  // (termasuk Assistant Manager QA sebagai pengganti), atau admin sistem.
+  const deptQA = data.user.department && (/\bQA\b/.test(data.user.department) || /quality assurance/i.test(data.user.department));
+  const jab = String(data.user.jabatan || '');
+  const canApprove = data.user.role === 'admin'
+    || (deptQA && /manager|direktur|director|kepala|head/i.test(jab));
   if (canApprove) document.getElementById('approvalLink').style.display = 'flex';
 
   const canViewAudit = data.user.role === 'admin'
@@ -660,6 +678,44 @@ async function uploadDirectToDrive(meta, file, onProgress, onStage) {
   return data;
 }
 
+// Area seret-lepas berkas. Klik di mana saja pada kotak juga membuka pemilih berkas,
+// karena sebagian pengguna tidak terbiasa dengan seret-lepas.
+(function setupDropzone() {
+  const dz = document.getElementById('dropzone');
+  const input = document.getElementById('file');
+  const label = document.getElementById('dzFile');
+
+  const tampilkanBerkas = () => {
+    const f = input.files[0];
+    if (!f) { label.textContent = ''; dz.classList.remove('has-file'); return; }
+    label.textContent = `${f.name} — ${(f.size / 1024 / 1024).toFixed(1)} MB`;
+    dz.classList.add('has-file');
+  };
+
+  dz.addEventListener('click', () => input.click());
+  input.addEventListener('change', tampilkanBerkas);
+
+  ['dragenter', 'dragover'].forEach(ev => dz.addEventListener(ev, (e) => {
+    e.preventDefault(); dz.classList.add('dragging');
+  }));
+  ['dragleave', 'drop'].forEach(ev => dz.addEventListener(ev, (e) => {
+    e.preventDefault(); dz.classList.remove('dragging');
+  }));
+  dz.addEventListener('drop', (e) => {
+    const f = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (!f) return;
+    // DataTransfer dipakai agar berkas hasil seret benar-benar masuk ke input file,
+    // sehingga proses upload berikutnya sama persis dengan pemilihan biasa.
+    const dt = new DataTransfer();
+    dt.items.add(f);
+    input.files = dt.files;
+    tampilkanBerkas();
+  });
+
+  // dikosongkan juga saat formulir di-reset setelah upload berhasil
+  document.getElementById('uploadForm').addEventListener('reset', () => setTimeout(tampilkanBerkas, 0));
+})();
+
 function uploadDocumentWithProgress(formData, onProgress) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -712,6 +768,7 @@ document.getElementById('uploadForm').addEventListener('submit', async (e) => {
   fd.append('department', document.getElementById('department').value);
   fd.append('allowed_departments', JSON.stringify(allowedDepartments));
   fd.append('allowed_users', JSON.stringify(allowedUsers));
+  fd.append('requires_approval', document.getElementById('requiresApproval').value);
   fd.append('file', document.getElementById('file').files[0]);
 
   msgEl.style.display = 'none';
@@ -732,7 +789,8 @@ document.getElementById('uploadForm').addEventListener('submit', async (e) => {
           doc_name: docName, doc_number: docNumber,
           department: document.getElementById('department').value,
           allowed_departments: JSON.stringify(allowedDepartments),
-          allowed_users: JSON.stringify(allowedUsers)
+          allowed_users: JSON.stringify(allowedUsers),
+          requires_approval: document.getElementById('requiresApproval').value
         },
         chosen, onProgress, (stage) => { progressStatus.textContent = stage; }
       );
@@ -840,7 +898,7 @@ function bucketize() {
     partial: active.filter(d => d.completion_status === 'partial'),
     complete: active.filter(d => d.completion_status === 'complete'),
     // Menunggu pengesahan: sudah lengkap TTD tapi belum ada tanggal pengesahan
-    approval: active.filter(d => d.completion_status === 'complete' && !d.approved_at),
+    approval: active.filter(d => d.requires_approval && d.completion_status === 'complete' && !d.approved_at),
     archived: allDocsCache.filter(d => d.archived)
   };
 }

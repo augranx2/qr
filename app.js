@@ -281,6 +281,8 @@ function requireAdmin(req, res, next) {
 // terdaftar di allowed_departments, dan siapa pun yang di-tag langsung (allowed_users).
 function canAccessDocument(user, doc) {
   if (user.role === 'admin') return true;
+  // Pengesah boleh membuka dokumen yang menunggu pengesahannya
+  if (doc.requires_approval && canApproveDocument(user)) return true;
   if (doc.uploaded_by === user.id) return true;
   if ((doc.allowed_users || []).includes(user.id)) return true;
   const allowed = doc.allowed_departments || [];
@@ -355,11 +357,19 @@ function canDeleteDocument(user, doc) {
   return doc.uploaded_by === user.id;
 }
 
-// Pengesahan dokumen adalah kewenangan manajerial: admin, atau siapa pun yang
-// jabatannya mengandung kata "manager" (Manager, Assistant Manager, Plant Manager).
+// Pengesahan dokumen adalah kewenangan Quality Assurance setingkat manager.
+// Assistant Manager QA ikut diberi kewenangan yang sama sebagai pengganti saat
+// Manager QA berhalangan, sehingga pengesahan dokumen tidak tertahan.
+// Admin sistem tetap diizinkan agar aplikasi bisa diuji dan dipulihkan bila perlu.
+function isQADepartment(dept) {
+  return !!(dept && (/\bQA\b/.test(dept) || /quality assurance/i.test(dept)));
+}
+
 function canApproveDocument(user) {
   if (user.role === 'admin') return true;
-  return !!(user.jabatan && /manager/i.test(user.jabatan));
+  if (!isQADepartment(user.department)) return false;
+  const j = String(user.jabatan || '');
+  return /manager|direktur|director|kepala|head/i.test(j);
 }
 
 // Audit trail terbuka untuk: admin, siapa pun yang jabatannya mengandung "manager",
@@ -705,6 +715,9 @@ app.post('/api/documents', requireLogin, requireActiveUser, upload.single('file'
       page_width, page_height,
       allowed_departments: allowedDepartments,
       allowed_users: allowedUsers,
+      // Default TIDAK perlu pengesahan - hanya dokumen yang memang memerlukan
+      // tanggal berlaku (SOP, protap, instruksi kerja) yang ditandai perlu disahkan.
+      requires_approval: String(req.body.requires_approval) === 'true',
       drive_original_file_id: driveOriginal ? driveOriginal.fileId : null,
       drive_original_view_link: driveOriginal ? driveOriginal.webViewLink : null
     });
@@ -868,6 +881,7 @@ app.post('/api/documents/upload-session', requireLogin, async (req, res) => {
         file_type: ext === '.pdf' ? 'pdf' : 'image',
         original_filename: file_name,
         allowed_departments: allowedDepartments, allowed_users: allowedUsers,
+        requires_approval: String(req.body.requires_approval) === 'true',
         uploader: req.user.id
       },
       JWT_SECRET,
@@ -929,6 +943,7 @@ app.post('/api/documents/finalize', requireLogin, async (req, res) => {
       uploaded_by: req.user.id,
       allowed_departments: session.allowed_departments,
       allowed_users: session.allowed_users,
+      requires_approval: !!session.requires_approval,
       page_width, page_height,
       drive_original_file_id: driveFileId,
       drive_original_view_link: meta.webViewLink || null
@@ -964,7 +979,14 @@ app.post('/api/documents/finalize', requireLogin, async (req, res) => {
 // see (admins and the original uploader always see everything they're involved with)
 app.get('/api/documents', requireLogin, async (req, res) => {
   const all = await db.getAllDocumentsWithUploader();
-  const visible = all.filter(doc => canAccessDocument(req.user, doc));
+  // Dokumen yang ditandai "perlu pengesahan" tetap terlihat oleh pihak yang berwenang
+  // mengesahkan, walaupun ia tidak di-tag sebagai penandatangan dan departemennya
+  // tidak terdaftar - tanpa ini dokumen tersebut tidak akan pernah sampai ke mejanya.
+  const bolehSahkan = canApproveDocument(req.user);
+  const visible = all.filter(doc =>
+    canAccessDocument(req.user, doc) ||
+    (bolehSahkan && doc.requires_approval && doc.completion_status === 'complete')
+  );
   res.json({ documents: visible });
 });
 
@@ -1458,6 +1480,11 @@ app.post('/api/documents/:id/approve', requireLogin, requireActiveUser, async (r
     }
     if (doc.approved_at) {
       return res.status(409).json({ error: 'Dokumen ini sudah disahkan sebelumnya' });
+    }
+    if (!doc.requires_approval) {
+      return res.status(400).json({
+        error: 'Dokumen ini tidak ditandai memerlukan pengesahan saat diupload'
+      });
     }
 
     const allSigs = await db.getAllSignaturesForDocument(doc.id);

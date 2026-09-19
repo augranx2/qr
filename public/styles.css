@@ -952,3 +952,25 @@ header .notif-panel a:hover, .notif-head a:hover {
 }
 .status-pill.aktif { background: var(--green-soft); color: var(--green); }
 .status-pill.nonaktif { background: var(--slate-soft); color: var(--slate); }
+
+/* ---- Area seret-lepas berkas pada halaman upload ---- */
+.dropzone {
+  border: 2px dashed var(--border-strong); border-radius: 14px;
+  padding: 30px 20px; text-align: center; cursor: pointer;
+  background: var(--paper); margin-bottom: 18px;
+  transition: border-color 0.15s var(--ease), background 0.15s var(--ease);
+}
+.dropzone:hover { border-color: var(--brand); background: var(--brand-soft); }
+.dropzone.dragging {
+  border-color: var(--brand); background: var(--brand-soft);
+  border-style: solid; box-shadow: 0 0 0 4px rgba(11, 110, 92, 0.12);
+}
+.dropzone.has-file { border-style: solid; border-color: var(--brand); background: var(--brand-soft); }
+.dz-ico { width: 34px; height: 34px; color: var(--brand); opacity: 0.75; margin-bottom: 10px; }
+.dz-title { font-size: 14px; font-weight: 600; color: var(--ink); }
+.dz-sub { font-size: 12px; color: var(--ink-faint); margin-top: 5px; }
+.dz-file {
+  font-size: 12.5px; color: var(--brand-dark); font-weight: 600;
+  margin-top: 10px; word-break: break-all;
+}
+@media (max-width: 620px) { .dropzone { padding: 22px 14px; } }
