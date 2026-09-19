@@ -739,25 +739,27 @@ app.post('/api/documents', requireLogin, requireActiveUser, upload.single('file'
 
 
 // ---------------------------------------------------------------------------
-// Stempel pengesahan dokumen
-// Berbeda dengan stempel TTD, stempel ini tidak memuat QR - isinya pernyataan
-// bahwa dokumen telah disahkan, tanggal mulai berlaku, dan siapa yang mengesahkan.
-// Bentuknya kotak bergaris agar terbaca sebagai cap resmi, bukan catatan tambahan.
+// Stempel tanggal (pengesahan dan kaji ulang)
+//
+// Mengikuti praktik stempel basah yang selama ini dipakai: hanya TANGGAL, dicetak
+// biru, tanpa kotak dan tanpa tulisan tambahan - persis seperti cap tanggal karet
+// yang dibubuhkan pada kolom "Tanggal Berlaku" di kop dokumen.
+//
+// Tinta biru dipakai agar dokumen asli langsung terbeda dari hasil fotokopi
+// hitam-putih; kebiasaan ini tetap berguna karena dokumen sah sering dicetak ulang.
 // ---------------------------------------------------------------------------
-// Stempel pengesahan dicetak BIRU. Di industri farmasi, tinta biru lazim dipakai
-// untuk tanda tangan dan cap pengesahan agar dokumen asli langsung terbeda dari
-// hasil fotokopi hitam-putih - kebiasaan yang tetap berguna walau dokumennya digital,
-// karena dokumen sah sering dicetak ulang untuk distribusi.
 const APPROVAL_BLUE = { r: 0.04, g: 0.25, b: 0.62 };  // #0A3F9E
-const APPROVAL = {
-  heightRatio: 0.42,   // tinggi kotak = 0,42 x lebarnya
-  pad: 0.05,
-  titleFont: 0.095,
-  dateFont: 0.085,
-  nameFont: 0.062
-};
+const BULAN_SINGKAT = ['JAN', 'FEB', 'MAR', 'APR', 'MEI', 'JUN',
+                       'JUL', 'AGU', 'SEP', 'OKT', 'NOV', 'DES'];
 
-// "2026-10-01" -> "1 Oktober 2026"
+// "2026-11-02" -> "02 NOV 2026" (tanggal 2 digit, bulan 3 huruf, tahun 4 digit)
+function formatStampDate(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || '').trim());
+  if (!m) return String(iso || '');
+  return `${m[3]} ${BULAN_SINGKAT[Number(m[2]) - 1]} ${m[1]}`;
+}
+
+// Versi panjang untuk keterangan di layar dan audit trail
 function formatEffectiveDate(iso) {
   const bulan = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
                  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
@@ -766,41 +768,36 @@ function formatEffectiveDate(iso) {
   return `${Number(m[3])} ${bulan[Number(m[2]) - 1]} ${m[1]}`;
 }
 
-function drawApprovalStamp(page, { fontBold, fontReg, X, T, W, tanggalTeks, pengesah }) {
-  const H = W * APPROVAL.heightRatio;
-  const pad = APPROVAL.pad * W;
-  const biru = rgb(APPROVAL_BLUE.r, APPROVAL_BLUE.g, APPROVAL_BLUE.b);
-  page.drawRectangle({
-    x: X, y: T - H, width: W, height: H,
-    color: rgb(1, 1, 1), borderColor: biru, borderWidth: 1.4
-  });
-  const maxW = W - 2 * pad;
-  const tulis = (teks, font, ukuranDasar, baseline, warna) => {
-    const bersih = sanitizeWinAnsi(teks);
-    const size = fitPdfFontSize(font, bersih, maxW, ukuranDasar * W);
-    page.drawText(bersih, {
-      x: X + (W - font.widthOfTextAtSize(bersih, size)) / 2,
-      y: baseline, size, font, color: warna
-    });
-  };
-  tulis('DOKUMEN SAH', fontBold, APPROVAL.titleFont,
-        T - pad - APPROVAL.titleFont * W, biru);
-  tulis(`Berlaku mulai ${tanggalTeks}`, fontBold, APPROVAL.dateFont,
-        T - pad - (APPROVAL.titleFont + 0.055 + APPROVAL.dateFont) * W, biru);
-  tulis('Disahkan oleh:', fontReg, APPROVAL.nameFont,
-        T - pad - (APPROVAL.titleFont + 0.055 + APPROVAL.dateFont + 0.05 + APPROVAL.nameFont) * W, biru);
-  tulis(pengesah, fontBold, APPROVAL.nameFont,
-        T - pad - (APPROVAL.titleFont + 0.055 + APPROVAL.dateFont + 0.05 + APPROVAL.nameFont * 2 + 0.025) * W, biru);
+// Batas kaji ulang: paling lama 3 tahun setelah tanggal berlaku
+function maxReviewDate(effectiveIso) {
+  const d = new Date(effectiveIso + 'T00:00:00');
+  if (isNaN(d)) return null;
+  d.setFullYear(d.getFullYear() + 3);
+  return d.toISOString().slice(0, 10);
 }
 
-function buildApprovalSvg({ W, H, tanggalTeks, pengesah }) {
-  const f = (r) => Math.max(6, r * W);
+// Menggambar satu stempel tanggal pada halaman PDF. Ukuran huruf dihitung agar
+// teksnya mengisi lebar kotak yang ditentukan pengesah, sehingga besar-kecilnya
+// stempel bisa disesuaikan dengan kolom pada kop dokumen.
+function drawDateStamp(page, { font, X, T, W, teks }) {
+  const biru = rgb(APPROVAL_BLUE.r, APPROVAL_BLUE.g, APPROVAL_BLUE.b);
+  const bersih = sanitizeWinAnsi(teks);
+  // Dimulai dari ukuran besar lalu dikecilkan sampai pas selebar kotak
+  const size = fitPdfFontSize(font, bersih, W, W);
+  const lebarTeks = font.widthOfTextAtSize(bersih, size);
+  page.drawText(bersih, {
+    x: X + (W - lebarTeks) / 2,
+    y: T - size,          // teks digambar tepat di bawah tepi atas kotak
+    size, font, color: biru
+  });
+}
+
+function buildDateStampSvg({ W, teks }) {
+  const H = Math.round(W * 0.34);
+  // Perkiraan lebar huruf ~0.62 x ukuran huruf untuk font tebal
+  const size = Math.min(H * 0.9, (W * 0.98) / (String(teks).length * 0.62));
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
-  <rect x="1" y="1" width="${W - 2}" height="${H - 2}" fill="#ffffff" stroke="#0A3F9E" stroke-width="2"/>
-  <text x="${W / 2}" y="${H * 0.30}" text-anchor="middle" font-family="DejaVu Sans, Arial, sans-serif" font-weight="bold" font-size="${f(APPROVAL.titleFont)}" fill="#0A3F9E">DOKUMEN SAH</text>
-  <text x="${W / 2}" y="${H * 0.55}" text-anchor="middle" font-family="DejaVu Sans, Arial, sans-serif" font-weight="bold" font-size="${f(APPROVAL.dateFont)}" fill="#0A3F9E">Berlaku mulai ${escapeXml(tanggalTeks)}</text>
-  <text x="${W / 2}" y="${H * 0.74}" text-anchor="middle" font-family="DejaVu Sans, Arial, sans-serif" font-size="${f(APPROVAL.nameFont)}" fill="#0A3F9E">Disahkan oleh:</text>
-  <text x="${W / 2}" y="${H * 0.90}" text-anchor="middle" font-family="DejaVu Sans, Arial, sans-serif" font-weight="bold" font-size="${f(APPROVAL.nameFont)}" fill="#0A3F9E">${escapeXml(pengesah)}</text>
+  <text x="${W / 2}" y="${H * 0.78}" text-anchor="middle" font-family="DejaVu Sans, Arial, sans-serif" font-weight="bold" font-size="${size}" fill="#0A3F9E">${escapeXml(teks)}</text>
 </svg>`;
 }
 
@@ -1480,10 +1477,30 @@ app.post('/api/documents/:id/approve', requireLogin, requireActiveUser, async (r
       return res.status(400).json({ error: 'Dokumen belum lengkap ditandatangani semua pihak' });
     }
 
-    const { effective_date, x, y, size, page_number } = req.body;
+    // Pengesahan membubuhkan satu atau dua stempel tanggal: tanggal berlaku (wajib)
+    // dan tanggal kaji ulang (opsional, paling lama 3 tahun setelah tanggal berlaku).
+    const { effective_date, review_date } = req.body;
+    const daftarStempel = Array.isArray(req.body.stamps) ? req.body.stamps : [];
     if (!effective_date) return res.status(400).json({ error: 'Tanggal berlaku wajib diisi' });
-    if (x == null || y == null || size == null) {
-      return res.status(400).json({ error: 'Posisi stempel pengesahan belum ditentukan' });
+
+    const stempelBerlaku = daftarStempel.find(st => st && st.type === 'berlaku');
+    if (!stempelBerlaku) {
+      return res.status(400).json({ error: 'Posisi stempel tanggal berlaku belum ditentukan' });
+    }
+    const stempelKajiUlang = daftarStempel.find(st => st && st.type === 'kaji_ulang');
+    if (review_date) {
+      const batas = maxReviewDate(effective_date);
+      if (batas && review_date > batas) {
+        return res.status(400).json({
+          error: `Tanggal kaji ulang paling lama 3 tahun setelah tanggal berlaku (maksimal ${formatEffectiveDate(batas)})`
+        });
+      }
+      if (review_date < effective_date) {
+        return res.status(400).json({ error: 'Tanggal kaji ulang tidak boleh sebelum tanggal berlaku' });
+      }
+      if (!stempelKajiUlang) {
+        return res.status(400).json({ error: 'Posisi stempel tanggal kaji ulang belum ditentukan' });
+      }
     }
 
     // Dikunci seperti proses TTD: pengesahan juga menulis ulang berkasnya.
@@ -1506,31 +1523,43 @@ app.post('/api/documents/:id/approve', requireLogin, requireActiveUser, async (r
     const approvedAt = new Date().toISOString();
     const outFilename = doc.signed_filename || `${doc.id}-signed${path.extname(doc.original_filename || '.pdf')}`;
     const outPath = path.join(SIGNED_DIR, outFilename);
-    const tanggalTeks = formatEffectiveDate(effective_date);
-    const pengesah = sanitizeWinAnsi(`${req.user.full_name}${req.user.jabatan ? ' — ' + req.user.jabatan : ''}`);
+    // Tiap stempel dipasangkan dengan tanggalnya masing-masing
+    const stempelSiap = [];
+    stempelSiap.push({ ...stempelBerlaku, teks: formatStampDate(effective_date) });
+    if (review_date && stempelKajiUlang) {
+      stempelSiap.push({ ...stempelKajiUlang, teks: formatStampDate(review_date) });
+    }
 
     if (doc.file_type === 'pdf') {
       const pdfDoc = await PDFDocument.load(sourceBytes);
       const pages = pdfDoc.getPages();
-      const page = pages[Math.min(Math.max(1, Number(page_number) || 1), pages.length) - 1];
       const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-      const fontReg = await pdfDoc.embedFont(StandardFonts.Helvetica);
-      const { width: pw, height: ph } = page.getSize();
-      const W = Number(size) * pw;
-      const X = Number(x) * pw;
-      const T = ph - (Number(y) * ph);
-      drawApprovalStamp(page, { fontBold, fontReg, X, T, W, tanggalTeks, pengesah });
+      for (const st of stempelSiap) {
+        const page = pages[Math.min(Math.max(1, Number(st.page_number) || 1), pages.length) - 1];
+        const { width: pw, height: ph } = page.getSize();
+        drawDateStamp(page, {
+          font: fontBold,
+          X: Number(st.x) * pw,
+          T: ph - (Number(st.y) * ph),
+          W: Number(st.size) * pw,
+          teks: st.teks
+        });
+      }
       fs.writeFileSync(outPath, await pdfDoc.save());
     } else {
       const sharpLib = require('sharp');
       const base = sharpLib(sourceBytes);
       const meta = await base.metadata();
-      const W = Math.max(120, Math.round(Number(size) * meta.width));
-      const H = Math.round(W * 0.42);
-      const left = Math.max(0, Math.min(Math.round(Number(x) * meta.width), meta.width - W));
-      const top = Math.max(0, Math.min(Math.round(Number(y) * meta.height), meta.height - H));
-      const svg = Buffer.from(buildApprovalSvg({ W, H, tanggalTeks, pengesah }));
-      await base.composite([{ input: svg, left, top }]).toFile(outPath);
+      const lapisan = stempelSiap.map(st => {
+        const W = Math.max(90, Math.round(Number(st.size) * meta.width));
+        const H = Math.round(W * 0.34);
+        return {
+          input: Buffer.from(buildDateStampSvg({ W, teks: st.teks })),
+          left: Math.max(0, Math.min(Math.round(Number(st.x) * meta.width), meta.width - W)),
+          top: Math.max(0, Math.min(Math.round(Number(st.y) * meta.height), meta.height - H))
+        };
+      });
+      await base.composite(lapisan).toFile(outPath);
     }
 
     let driveInfo = null, driveError = null;
@@ -1554,6 +1583,7 @@ app.post('/api/documents/:id/approve', requireLogin, requireActiveUser, async (r
       approved_by_name: req.user.full_name,
       approved_by_jabatan: req.user.jabatan || null,
       effective_date,
+      review_date: review_date || null,
       signed_filename: outFilename,
       ...(driveInfo ? { drive_file_id: driveInfo.fileId, drive_view_link: driveInfo.webViewLink } : {})
     });
@@ -1562,10 +1592,11 @@ app.post('/api/documents/:id/approve', requireLogin, requireActiveUser, async (r
       type: 'approve_document', user_id: req.user.id, username: req.user.username,
       full_name: req.user.full_name, document_id: doc.id,
       doc_name: doc.doc_name, doc_number: doc.doc_number,
-      reason: `Tanggal berlaku ${tanggalTeks}`
+      reason: `Tanggal berlaku ${formatEffectiveDate(effective_date)}`
+        + (review_date ? ` · kaji ulang ${formatEffectiveDate(review_date)}` : '')
     });
 
-    res.json({ ok: true, approved_at: approvedAt, effective_date, driveError });
+    res.json({ ok: true, approved_at: approvedAt, effective_date, review_date: review_date || null, driveError });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Gagal mengesahkan dokumen: ' + e.message });

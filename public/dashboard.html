@@ -936,7 +936,8 @@ function renderDocs() {
     if (doc.approved_at) {
       const badge = document.createElement('div');
       badge.className = 'doc-approved';
-      badge.textContent = `Disahkan · berlaku ${formatUploadDate(doc.effective_date)}`;
+      badge.textContent = `Disahkan · berlaku ${formatUploadDate(doc.effective_date)}`
+        + (doc.review_date ? ` · kaji ulang ${formatUploadDate(doc.review_date)}` : '');
       nameCell.appendChild(badge);
     }
     tr.appendChild(nameCell);

@@ -69,6 +69,13 @@
   }
   .qr-box.approve-box .stamp-name,
   .qr-box.approve-box .stamp-time { color: #0A3F9E; }
+  .opsional { color: var(--ink-faint); font-weight: 400; text-transform: none; letter-spacing: 0; }
+  .stamp-marker {
+    position: absolute; border: 1px dashed #0A3F9E; color: #0A3F9E;
+    background: rgba(10,63,158,0.06); border-radius: 3px; pointer-events: none;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; white-space: nowrap; overflow: hidden; box-sizing: border-box;
+  }
   .size-lock-note {
     margin-top: 8px; padding: 8px 11px; border-radius: 8px;
     background: var(--brand-soft); color: var(--brand-dark);
@@ -147,9 +154,22 @@
       <button class="primary" id="signBtn" onclick="submitSignature()">Tandatangani Dokumen</button>
 
       <div id="approvePanel" style="display:none;">
-        <label for="effectiveDate">Tanggal mulai berlaku</label>
-        <input type="date" id="effectiveDate" onchange="tickStampClock()">
-        <p class="slot-help">Geser kotak ke posisi stempel pengesahan, lalu tekan tombol di bawah. Stempel ditempelkan pada berkas yang sudah ber-QR, sehingga hasil akhirnya satu berkas: TTD QR + tanggal pengesahan.</p>
+        <label for="effectiveDate">Tanggal berlaku</label>
+        <input type="date" id="effectiveDate" onchange="onEffectiveChange()">
+
+        <label for="reviewDate" style="margin-top:12px;">Tanggal kaji ulang <span class="opsional">(opsional)</span></label>
+        <input type="date" id="reviewDate" onchange="onStampTargetChange()">
+        <p class="slot-help" id="reviewHint">Terisi otomatis 3 tahun setelah tanggal berlaku. Boleh dimajukan, tidak boleh lebih dari 3 tahun. Kosongkan bila belum diperlukan.</p>
+
+        <label style="margin-top:12px;">Stempel yang sedang ditempatkan</label>
+        <select id="stampTarget" onchange="onStampTargetChange()">
+          <option value="berlaku">Tanggal berlaku</option>
+          <option value="kaji_ulang">Tanggal kaji ulang</option>
+        </select>
+        <button class="secondary" onclick="placeStamp()">Tetapkan posisi stempel ini</button>
+        <div id="stampList" class="slot-list"></div>
+
+        <p class="slot-help">Stempel dicetak biru, hanya berisi tanggal &mdash; mengikuti bentuk cap basah pada kolom Tanggal Berlaku di kop dokumen. Geser kotak ke kolom yang dituju, sesuaikan lebarnya, lalu tetapkan posisinya.</p>
         <button class="primary" id="approveBtn" onclick="submitApproval()">Sahkan Dokumen</button>
       </div>
 
@@ -231,16 +251,127 @@ async function checkAuth() {
   updateQrBox();
 }
 
+// ===================== PENGESAHAN (STEMPEL TANGGAL) =====================
+// Dua stempel yang mungkin dibubuhkan: tanggal berlaku (wajib) dan tanggal kaji
+// ulang (opsional, paling lama 3 tahun setelah tanggal berlaku).
+let stampPositions = {};   // { berlaku: {...}, kaji_ulang: {...} }
+
+const BULAN_SINGKAT = ['JAN', 'FEB', 'MAR', 'APR', 'MEI', 'JUN',
+                       'JUL', 'AGU', 'SEP', 'OKT', 'NOV', 'DES'];
+
+// "2026-11-02" -> "02 NOV 2026"
+function formatStampDate(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || '').trim());
+  return m ? `${m[3]} ${BULAN_SINGKAT[Number(m[2]) - 1]} ${m[1]}` : '';
+}
+
+function plusYears(iso, n) {
+  const d = new Date(iso + 'T00:00:00');
+  if (isNaN(d)) return '';
+  d.setFullYear(d.getFullYear() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+// Tanggal kaji ulang otomatis 3 tahun setelah tanggal berlaku, sekaligus
+// menetapkan batas maksimalnya pada pemilih tanggal.
+function onEffectiveChange() {
+  const eff = document.getElementById('effectiveDate').value;
+  const rev = document.getElementById('reviewDate');
+  if (eff) {
+    const maks = plusYears(eff, 3);
+    rev.min = eff;
+    rev.max = maks;
+    if (!rev.value || rev.value > maks || rev.value < eff) rev.value = maks;
+    document.getElementById('reviewHint').textContent =
+      `Terisi otomatis 3 tahun setelah tanggal berlaku (maksimal ${formatStampDate(maks)}). Boleh dimajukan. Kosongkan bila belum diperlukan.`;
+  }
+  onStampTargetChange();
+}
+
+// Teks pada kotak pratinjau mengikuti stempel yang sedang dipilih
+function onStampTargetChange() {
+  const jenis = document.getElementById('stampTarget').value;
+  const iso = jenis === 'berlaku'
+    ? document.getElementById('effectiveDate').value
+    : document.getElementById('reviewDate').value;
+  const teks = formatStampDate(iso) || (jenis === 'berlaku' ? '__ ___ ____' : '__ ___ ____');
+  document.getElementById('stampName').textContent = teks;
+  document.getElementById('stampTime').textContent =
+    jenis === 'berlaku' ? 'tanggal berlaku' : 'tanggal kaji ulang';
+  renderStampMarkers();
+}
+
+function placeStamp() {
+  const jenis = document.getElementById('stampTarget').value;
+  stampPositions[jenis] = {
+    type: jenis, page_number: currentPage,
+    x: qrFrac.x, y: qrFrac.y, size: qrFrac.size
+  };
+  renderStampList();
+  // Setelah tanggal berlaku ditetapkan, langsung arahkan ke stempel berikutnya
+  if (jenis === 'berlaku' && document.getElementById('reviewDate').value && !stampPositions.kaji_ulang) {
+    document.getElementById('stampTarget').value = 'kaji_ulang';
+    onStampTargetChange();
+  }
+}
+
+function removeStamp(jenis) {
+  delete stampPositions[jenis];
+  renderStampList();
+}
+
+function renderStampList() {
+  const nama = { berlaku: 'Tanggal berlaku', kaji_ulang: 'Tanggal kaji ulang' };
+  const isi = Object.values(stampPositions).map(st => `
+    <div class="slot-row">
+      <b>${nama[st.type]}</b>
+      <span class="slot-pos">hal ${st.page_number} · ${Math.round(st.x * 100)},${Math.round(st.y * 100)}</span>
+      <button type="button" onclick="removeStamp('${st.type}')">Hapus</button>
+    </div>`).join('');
+  document.getElementById('stampList').innerHTML = isi
+    || '<span class="slot-help" style="margin:0;">Belum ada posisi stempel yang ditetapkan.</span>';
+  renderStampMarkers();
+}
+
+// Penanda biru untuk stempel yang sudah ditetapkan pada halaman yang sedang dibuka
+function renderStampMarkers() {
+  const wrap = document.getElementById('canvasWrap');
+  wrap.querySelectorAll('.stamp-marker').forEach(el => el.remove());
+  const surface = getSurfaceEl();
+  if (!surface) return;
+  const w = surface.clientWidth || surface.width;
+  const h = surface.clientHeight || surface.height;
+  Object.values(stampPositions).filter(st => st.page_number === currentPage).forEach(st => {
+    const iso = st.type === 'berlaku'
+      ? document.getElementById('effectiveDate').value
+      : document.getElementById('reviewDate').value;
+    const el = document.createElement('div');
+    el.className = 'stamp-marker';
+    const W = st.size * w;
+    el.style.width = W + 'px';
+    el.style.height = (W * 0.34) + 'px';
+    el.style.left = (st.x * w) + 'px';
+    el.style.top = (st.y * h) + 'px';
+    el.style.fontSize = Math.max(6, W * 0.16) + 'px';
+    el.textContent = formatStampDate(iso) || '__ ___ ____';
+    wrap.appendChild(el);
+  });
+}
+
 async function submitApproval() {
   const btn = document.getElementById('approveBtn');
   const msgEl = document.getElementById('signMsg');
   const tanggal = document.getElementById('effectiveDate').value;
-  if (!tanggal) {
-    msgEl.textContent = 'Tanggal mulai berlaku wajib diisi.';
+  const kajiUlang = document.getElementById('reviewDate').value;
+  const gagal = (pesan) => {
+    msgEl.textContent = pesan;
     msgEl.className = 'msg error';
     msgEl.style.display = 'block';
-    return;
-  }
+  };
+  if (!tanggal) return gagal('Tanggal berlaku wajib diisi.');
+  if (!stampPositions.berlaku) return gagal('Tetapkan dulu posisi stempel tanggal berlaku pada dokumen.');
+  if (kajiUlang && !stampPositions.kaji_ulang) return gagal('Tetapkan juga posisi stempel tanggal kaji ulang, atau kosongkan tanggalnya.');
+
   btn.disabled = true;
   btn.textContent = 'Memproses...';
   try {
@@ -248,21 +379,20 @@ async function submitApproval() {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         effective_date: tanggal,
-        x: qrFrac.x, y: qrFrac.y, size: qrFrac.size, page_number: currentPage
+        review_date: kajiUlang || null,
+        stamps: Object.values(stampPositions)
       })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
-    msgEl.innerHTML = 'Dokumen berhasil disahkan. Berkas ber-QR sudah ditimpa dengan versi yang memuat tanggal pengesahan.'
+    msgEl.innerHTML = 'Dokumen berhasil disahkan. Stempel tanggal sudah ditempelkan pada berkas ber-QR.'
       + (data.driveError ? '<br><b>Catatan:</b> gagal mengunggah ke Google Drive — ' + esc(data.driveError) : '');
     msgEl.className = 'msg success';
     msgEl.style.display = 'block';
     btn.textContent = 'Dokumen sudah disahkan';
     await loadDoc(false);
   } catch (err) {
-    msgEl.textContent = err.message;
-    msgEl.className = 'msg error';
-    msgEl.style.display = 'block';
+    gagal(err.message);
     btn.disabled = false;
     btn.textContent = 'Sahkan Dokumen';
   }
@@ -446,8 +576,12 @@ async function loadDoc(isInitial) {
     }
     // Sengaja TIDAK berhenti di sini: pratinjau dokumen dirender di bagian bawah
     // fungsi ini. Menghentikan fungsi membuat halaman tampil kosong tanpa dokumen.
-    document.getElementById('sizeLabel').textContent = 'Ukuran Stempel Pengesahan';
+    document.getElementById('sizeLabel').textContent = 'Lebar Stempel Tanggal';
     document.getElementById('signHint').style.display = 'none';
+    // Stempel tanggal jauh lebih kecil daripada stempel TTD
+    if (isInitial) { qrFrac.size = 0.14; setQrSizePercent(14); }
+    onEffectiveChange();
+    renderStampList();
   }
 
   // Panel pengaturan posisi hanya muncul selama dokumen belum punya tanda tangan.
@@ -557,7 +691,7 @@ function updateQrBox() {
   const h = surface.clientHeight || surface.height;
   const W = qrFrac.size * w;              // lebar stempel
   // Stempel pengesahan lebih pendek karena tidak memuat QR
-  const H = W * (modeApprove ? 0.42 : STAMP.heightRatio);
+  const H = W * (modeApprove ? 0.34 : STAMP.heightRatio);
   box.style.width = W + 'px';
   box.style.height = H + 'px';
   box.style.left = (qrFrac.x * w) + 'px';
@@ -565,14 +699,18 @@ function updateQrBox() {
 
   const qrEl = document.getElementById('stampQr');
   if (modeApprove) {
-    box.style.paddingTop = (0.06 * W) + 'px';
-    box.style.paddingBottom = (0.06 * W) + 'px';
+    // Tanggal memenuhi lebar kotak; label kecil di bawahnya hanya panduan layar
+    box.style.paddingTop = '0px';
+    box.style.paddingBottom = '0px';
+    box.style.justifyContent = 'center';
     const nameEl2 = document.getElementById('stampName');
     const timeEl2 = document.getElementById('stampTime');
-    nameEl2.style.fontSize = (0.095 * W) + 'px';
+    nameEl2.style.fontSize = (W * 0.16) + 'px';
     nameEl2.style.marginTop = '0px';
-    timeEl2.style.fontSize = (0.085 * W) + 'px';
-    timeEl2.style.marginTop = (0.06 * W) + 'px';
+    timeEl2.style.fontSize = Math.max(6, W * 0.075) + 'px';
+    timeEl2.style.marginTop = '2px';
+    timeEl2.style.opacity = '0.65';
+    if (typeof renderStampMarkers === 'function') setTimeout(renderStampMarkers, 0);
     return;
   }
   const qrSide = STAMP.qrRatio * W;
@@ -768,14 +906,8 @@ async function submitSignature() {
 // Jam di kotak template berjalan real-time supaya jelas bahwa yang tercetak nanti
 // adalah waktu saat tombol Tandatangani ditekan, bukan waktu halaman dibuka.
 function tickStampClock() {
-  // Di mode pengesahan, kotak pratinjau menampilkan tanggal berlaku, bukan jam berjalan
-  if (modeApprove) {
-    const v = document.getElementById('effectiveDate').value;
-    document.getElementById('stampTime').textContent = v
-      ? `Berlaku mulai ${new Date(v + 'T00:00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}`
-      : 'Berlaku mulai ...';
-    return;
-  }
+  // Di mode pengesahan isi kotak diatur oleh onStampTargetChange(), bukan jam berjalan
+  if (modeApprove) return;
   document.getElementById('stampTime').textContent = formatNowWIB();
 }
 tickStampClock();
