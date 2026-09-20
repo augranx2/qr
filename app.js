@@ -10,6 +10,7 @@ const QRCode = require('qrcode');
 const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
 const gdrive = require('./google-drive');
 const db = require('./db');
+const sso = require('./portal-sso');
 
 const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
 
@@ -130,6 +131,98 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+
+// ---------- LOGIN LEWAT PORTAL REMS (SSO) ----------
+// Aktif hanya bila Environment Variable SSO_AKTIF = "true". Selama belum aktif,
+// seluruh blok ini dilewati dan TTE berjalan persis seperti sebelumnya.
+//
+// Cara kerjanya sengaja tidak mengubah sistem sesi TTE yang sudah tervalidasi:
+// bila tiket login portal sah dan user punya akses TTE, TTE menerbitkan sesi
+// TTE-nya sendiri (cookie auth_token) untuk akun TTE dengan username yang sama.
+// Data akun (jabatan, departemen, role, status aktif) tetap dibaca dari database
+// TTE. Bila sesi portal berakhir (logout / nonaktif / habis), sesi TTE ikut diputus.
+const SSO_ASET = /\.(css|js|map|png|jpe?g|gif|svg|ico|webp|woff2?|ttf)$/i;
+
+async function cariUserTte(username) {
+  const u = String(username || '').trim();
+  let user = await db.getUserByUsername(u);
+  if (user) return user;
+  const semua = await db.listUsers();
+  const cocok = semua.find((x) => String(x.username || '').toLowerCase() === u.toLowerCase());
+  return cocok ? db.getUserById(cocok.id) : null;
+}
+
+function halamanPesan(judul, isi, tombol, href) {
+  return `<!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${judul} - TTE</title></head>
+<body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#f6faf8;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:24px">
+<div style="max-width:420px;background:#fff;border:1px solid #dfe6e3;border-radius:16px;padding:28px;text-align:center">
+<h1 style="font-size:20px;margin:0;color:#13231f">${judul}</h1><p style="color:#4b5b56;line-height:1.55;margin-top:10px">${isi}</p>
+<a href="${href}" style="display:inline-block;margin-top:18px;padding:10px 20px;border-radius:999px;background:#0b6e5c;color:#fff;font-weight:600;text-decoration:none">${tombol}</a>
+</div></body></html>`;
+}
+
+app.use(async (req, res, next) => {
+  if (!sso.ssoAktif() || SSO_ASET.test(req.path)) return next();
+  const asal = `https://${req.headers['x-forwarded-host'] || req.headers.host}`;
+  const portal = sso.portalUrl();
+  let status = 'login';
+  let tanpaAkunTte = false;
+  try {
+    const h = await sso.periksaSso(req, 'tte');
+    status = h.status;
+    if (h.status === 'ok') {
+      const lokal = getUserFromRequest(req);
+      if (!lokal || String(lokal.username).toLowerCase() !== h.user.username.toLowerCase()) {
+        const user = await cariUserTte(h.user.username);
+        if (user && user.active !== false) {
+          const payload = {
+            id: user.id, username: user.username, full_name: user.full_name,
+            department: user.department, role: user.role, jabatan: user.jabatan || null,
+            loginAt: Date.now()
+          };
+          issueSessionCookie(res, payload);
+          // Supaya permintaan yang sedang berjalan ini juga langsung dianggap login.
+          req.cookies.auth_token = jwt.sign(payload, JWT_SECRET, { expiresIn: Math.floor(IDLE_TIMEOUT_MS / 1000) });
+          await db.logAudit({
+            type: 'login', user_id: user.id, username: user.username, full_name: user.full_name,
+            reason: 'via Portal REMS'
+          });
+        } else {
+          tanpaAkunTte = true;
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Pemeriksaan login portal gagal:', e);
+    if (req.path.startsWith('/api/')) return res.status(500).json({ error: 'Login portal belum bisa diperiksa. ' + e.message });
+    return res.status(500).send(halamanPesan('Login portal belum bisa diperiksa', String(e.message || e), 'Coba lagi', req.originalUrl));
+  }
+
+  if (status !== 'ok' || tanpaAkunTte) {
+    // Sesi portal tidak berlaku (atau tidak ada akun TTE) -> sesi TTE ikut diputus.
+    if (req.cookies && req.cookies.auth_token) {
+      res.clearCookie('auth_token');
+      delete req.cookies.auth_token;
+    }
+  }
+
+  const halaman = req.path;
+  if (halaman === '/' || halaman === '/index.html') {
+    if (status === 'ok' && !tanpaAkunTte) return res.redirect('/dashboard.html');
+    if (status === 'ganti-password') return res.redirect(`${portal}/ganti-password?next=${encodeURIComponent(asal + '/dashboard.html')}`);
+    if (status === 'akses') {
+      return res.status(403).send(halamanPesan('Tidak ada akses', 'Akun Anda belum diberi akses ke TTE. Hubungi admin Portal REMS bila Anda memerlukannya.', 'Kembali ke Portal REMS', portal));
+    }
+    if (tanpaAkunTte) {
+      return res.status(403).send(halamanPesan('Akun TTE belum ada', 'Username Anda belum terdaftar atau sedang nonaktif di TTE. Hubungi admin TTE.', 'Kembali ke Portal REMS', portal));
+    }
+    return res.redirect(sso.loginUrl(asal + '/dashboard.html'));
+  }
+  if (halaman === '/change-password.html') {
+    return res.redirect(`${portal}/ganti-password?next=${encodeURIComponent(asal + '/dashboard.html')}`);
+  }
+  next();
+});
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', (req, res, next) => {
   // Only allow access to uploads if logged in (raw uploaded docs are internal, not yet signed)
@@ -236,6 +329,9 @@ function requireLogin(req, res, next) {
 
 // ---------- AUTH ROUTES ----------
 app.post('/api/login', async (req, res) => {
+  if (sso.ssoAktif()) {
+    return res.status(400).json({ error: 'Login sekarang lewat Portal REMS: ' + sso.portalUrl() });
+  }
   const { username, password } = req.body;
   const user = await db.getUserByUsername(username);
   if (!user || !bcrypt.compareSync(password, user.password_hash)) {
@@ -265,6 +361,8 @@ app.post('/api/logout', async (req, res) => {
   const user = getUserFromRequest(req);
   if (user) await db.logAudit({ type: 'logout', user_id: user.id, username: user.username, full_name: user.full_name });
   res.clearCookie('auth_token');
+  // Mode portal: keluar = mengakhiri sesi Portal REMS (berlaku di semua aplikasi).
+  if (sso.ssoAktif()) await sso.akhiriSesiPortal(req, res);
   res.json({ ok: true });
 });
 
@@ -481,6 +579,9 @@ app.post('/api/users/:id/reset-password', requireLogin, requireAdmin, async (req
 // Self-service: any logged-in user can change their OWN password, by proving they know
 // the current one first (unlike the admin reset above, which doesn't need the old password).
 app.post('/api/me/change-password', requireLogin, async (req, res) => {
+  if (sso.ssoAktif()) {
+    return res.status(400).json({ error: 'Password sekarang diganti lewat Portal REMS: ' + sso.portalUrl() + '/ganti-password' });
+  }
   const { oldPassword, newPassword } = req.body;
   if (!oldPassword || !newPassword) return res.status(400).json({ error: 'Password lama dan baru wajib diisi' });
   if (newPassword.length < 4) return res.status(400).json({ error: 'Password baru minimal 4 karakter' });
