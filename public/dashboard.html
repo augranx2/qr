@@ -41,6 +41,7 @@
       </div>
     </div>
     <span class="who" id="whoami"></span>
+    <a id="portalLink" href="https://portal.myrama.id" style="display:none;align-items:center;gap:6px;padding:7px 14px;border-radius:999px;border:1px solid #e2e8f0;font-size:13px;font-weight:600;color:#1e4d8f;text-decoration:none;background:#f0f6ff">⌂ Portal</a>
     <button onclick="logout()">Keluar</button>
   </div>
 </header>
@@ -370,6 +371,10 @@ async function checkAuth() {
   await loadDocs();
   loadNotifications();
 }
+// Tampilkan tombol portal hanya bila SSO aktif
+fetch('/api/me').then(r=>r.json()).then(d=>{
+  if(d.user) document.getElementById('portalLink').style.display='inline-flex';
+}).catch(()=>{});
 async function logout() {
   await fetch('/api/logout', { method: 'POST' });
   window.location.href = '/';
