@@ -76,6 +76,36 @@
     display: flex; align-items: center; justify-content: center;
     font-weight: 700; white-space: nowrap; overflow: hidden; box-sizing: border-box;
   }
+  /* Modal konfirmasi TTD */
+  .confirm-backdrop {
+    position: fixed; inset: 0; background: rgba(10, 26, 22, 0.55); z-index: 100;
+    display: none; align-items: center; justify-content: center; padding: 20px;
+    backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+  }
+  .confirm-backdrop.open { display: flex; }
+  .confirm-box {
+    background: var(--card); border-radius: 16px; width: 100%; max-width: 420px;
+    padding: 22px; box-shadow: 0 28px 60px -20px rgba(10, 26, 22, 0.6);
+  }
+  .confirm-title { font-family: var(--font-display); font-size: 17px; font-weight: 700; color: var(--ink); }
+  .confirm-doc { font-size: 12.5px; color: var(--ink-soft); margin-top: 4px; line-height: 1.45; }
+  .confirm-rows {
+    margin: 16px 0; border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
+  }
+  .confirm-rows > div {
+    display: flex; justify-content: space-between; gap: 12px; padding: 10px 14px;
+    font-size: 12.5px; border-bottom: 1px solid var(--border);
+  }
+  .confirm-rows > div:last-child { border-bottom: none; }
+  .confirm-rows span { color: var(--ink-faint); }
+  .confirm-rows b { color: var(--ink); text-align: right; }
+  .confirm-warn {
+    font-size: 12.5px; line-height: 1.55; margin: 0 0 16px;
+    background: var(--amber-soft); color: #7A4A12; padding: 10px 13px; border-radius: 10px;
+  }
+  .confirm-actions { display: flex; gap: 8px; }
+  .confirm-actions button { flex: 1; margin: 0; width: auto; }
+  @media (max-width: 520px) { .confirm-actions { flex-direction: column-reverse; } }
   .size-lock-note {
     margin-top: 8px; padding: 8px 11px; border-radius: 8px;
     background: var(--brand-soft); color: var(--brand-dark);
@@ -151,7 +181,7 @@
       <div class="size-lock-note" id="posLockNote" style="display:none;"></div>
       <div class="hint" id="signHint">Kotak putus-putus di dokumen adalah <b>ukuran asli stempel TTE</b> yang akan tercetak: QR di atas, lalu nama Anda dan tanggal/jam TTD. Garis putus-putus dan latarnya hanya panduan di layar &mdash; di dokumen hanya QR dan tulisannya yang muncul, sisanya transparan. Geser ke posisi yang diinginkan, sesuaikan ukuran (bisa juga ketik angka persen langsung supaya ukurannya seragam tiap kali minta TTD ke orang lain), lalu klik Tandatangani. Setelah tersimpan, Anda bisa langsung menempel QR lagi di posisi/halaman lain tanpa perlu kembali ke Dashboard dulu.</div>
       <div class="msg" id="signMsg" style="margin-top:10px;"></div>
-      <button class="primary" id="signBtn" onclick="submitSignature()">Tandatangani Dokumen</button>
+      <button class="primary" id="signBtn" onclick="openSignConfirm()">Tandatangani Dokumen</button>
 
       <div id="approvePanel" style="display:none;">
         <label for="effectiveDate">Tanggal berlaku</label>
@@ -186,6 +216,25 @@
     </div>
   </div>
 </main>
+
+<!-- Konfirmasi sebelum membubuhkan TTD. Tanda tangan tidak bisa dibatalkan,
+     jadi satu langkah konfirmasi mencegah salah pencet atau salah posisi. -->
+<div class="confirm-backdrop" id="signConfirm" onclick="if(event.target===this) closeSignConfirm()">
+  <div class="confirm-box">
+    <div class="confirm-title">Bubuhkan tanda tangan?</div>
+    <div class="confirm-doc" id="confirmDoc"></div>
+    <div class="confirm-rows">
+      <div><span>Penandatangan</span><b id="confirmSigner">&mdash;</b></div>
+      <div><span>Halaman</span><b id="confirmPage">&mdash;</b></div>
+      <div><span>Posisi</span><b id="confirmPos">&mdash;</b></div>
+    </div>
+    <p class="confirm-warn">Tanda tangan yang sudah dibubuhkan <b>tidak dapat dibatalkan</b>. Pastikan isi dokumen sudah Anda baca dan posisi QR sudah tepat.</p>
+    <div class="confirm-actions">
+      <button class="secondary" onclick="closeSignConfirm()">Periksa lagi</button>
+      <button class="primary" id="confirmGo" onclick="confirmSign()">Ya, tandatangani</button>
+    </div>
+  </div>
+</div>
 <script>
 // Sesi berakhir (idle 30 menit / batas absolut 12 jam): server membalas 401,
 // dan halaman langsung diarahkan ke login daripada diam-diam gagal memuat data.
@@ -857,6 +906,28 @@ async function postSignature() {
   const data = await res.json();
   return { status: res.status, ok: res.ok, data };
 }
+
+// ---------- konfirmasi sebelum TTD ----------
+let meCache = null;
+async function openSignConfirm() {
+  if (!meCache) {
+    try { meCache = (await (await fetch('/api/me')).json()).user; } catch (e) { meCache = null; }
+  }
+  document.getElementById('confirmDoc').textContent = doc ? `${doc.doc_number} — ${doc.doc_name}` : '';
+  document.getElementById('confirmSigner').textContent = meCache ? meCache.full_name : '—';
+  document.getElementById('confirmPage').textContent = `${currentPage}${totalPages ? ' dari ' + totalPages : ''}`;
+  // Posisi ditulis sederhana (kiri/tengah/kanan, atas/tengah/bawah) supaya mudah dicek
+  const hor = qrFrac.x < 0.33 ? 'kiri' : (qrFrac.x < 0.6 ? 'tengah' : 'kanan');
+  const ver = qrFrac.y < 0.33 ? 'atas' : (qrFrac.y < 0.66 ? 'tengah' : 'bawah');
+  document.getElementById('confirmPos').textContent = positionLocked
+    ? 'sesuai penetapan pengupload'
+    : `${ver} ${hor}`;
+  document.getElementById('signConfirm').classList.add('open');
+  setTimeout(() => document.getElementById('confirmGo').focus(), 50);
+}
+function closeSignConfirm() { document.getElementById('signConfirm').classList.remove('open'); }
+function confirmSign() { closeSignConfirm(); submitSignature(); }
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSignConfirm(); });
 
 async function submitSignature() {
   const btn = document.getElementById('signBtn');

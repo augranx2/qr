@@ -183,10 +183,16 @@ app.use(async (req, res, next) => {
           issueSessionCookie(res, payload);
           // Supaya permintaan yang sedang berjalan ini juga langsung dianggap login.
           req.cookies.auth_token = jwt.sign(payload, JWT_SECRET, { expiresIn: Math.floor(IDLE_TIMEOUT_MS / 1000) });
-          await db.logAudit({
-            type: 'login', user_id: user.id, username: user.username, full_name: user.full_name,
-            reason: 'via Portal REMS'
-          });
+          // Dicatat SEKALI per sesi portal (sid). Middleware ini berjalan di setiap
+          // permintaan; saat halaman pertama dibuka, beberapa permintaan berangkat
+          // bersamaan sebelum cookie TTE tersimpan, sehingga sebelumnya satu kali
+          // login bisa tercatat sampai lima kali di menit yang sama.
+          if (await db.markOnce(`sso_login:${h.sid}:${user.id}`)) {
+            await db.logAudit({
+              type: 'login', user_id: user.id, username: user.username, full_name: user.full_name,
+              reason: 'via Portal REMS'
+            });
+          }
         } else {
           tanpaAkunTte = true;
         }
@@ -367,7 +373,8 @@ app.post('/api/logout', async (req, res) => {
 });
 
 app.get('/api/me', (req, res) => {
-  res.json({ user: getUserFromRequest(req) });
+  // sso: dipakai halaman untuk menampilkan tombol Portal hanya saat login portal aktif
+  res.json({ user: getUserFromRequest(req), sso: sso.ssoAktif() });
 });
 
 function requireAdmin(req, res, next) {

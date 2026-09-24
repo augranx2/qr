@@ -719,6 +719,24 @@ module.exports = {
   // Kunci ini memastikan hanya satu proses TTD berjalan pada satu dokumen dalam satu
   // waktu. TTL dipasang supaya kunci tidak menggantung selamanya bila proses gagal
   // di tengah jalan (misalnya fungsi serverless berakhir mendadak).
+  // Penanda "sudah pernah" yang atomik: hanya panggilan PERTAMA dengan kunci yang
+  // sama yang mendapat true, walaupun beberapa permintaan datang bersamaan.
+  // Dipakai agar login lewat portal tercatat satu kali per sesi portal - tanpa ini,
+  // beberapa permintaan halaman yang berangkat serentak sama-sama mencatat "login".
+  async markOnce(key, ttlMs = 12 * 60 * 60 * 1000) {
+    await ensureSeeded();
+    const fullKey = `${KV_PREFIX}:once:${key}`;
+    if (KV_CONFIGURED) {
+      const ok = await kv.set(fullKey, Date.now(), { nx: true, px: ttlMs });
+      return ok === 'OK' || ok === true;
+    }
+    if (!fileLocks) fileLocks = new Map();
+    const until = fileLocks.get(fullKey);
+    if (until && until > Date.now()) return false;
+    fileLocks.set(fullKey, Date.now() + ttlMs);
+    return true;
+  },
+
   async acquireSignLock(documentId, ttlMs = 90000) {
     await ensureSeeded();
     const key = `${KV_PREFIX}:signlock:${documentId}`;

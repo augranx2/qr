@@ -373,7 +373,8 @@ async function checkAuth() {
 }
 // Tampilkan tombol portal hanya bila SSO aktif
 fetch('/api/me').then(r=>r.json()).then(d=>{
-  if(d.user) document.getElementById('portalLink').style.display='inline-flex';
+  // Sebelumnya hanya memeriksa d.user, sehingga tombol tetap muncul walau SSO dimatikan
+  if (d.user && d.sso) document.getElementById('portalLink').style.display='inline-flex';
 }).catch(()=>{});
 async function logout() {
   await fetch('/api/logout', { method: 'POST' });

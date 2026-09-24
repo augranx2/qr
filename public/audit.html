@@ -114,6 +114,9 @@ function detailFor(entry) {
       : '<span class="detail-note">dihapus permanen</span>');
     if (entry.reason) parts.push(`<span class="detail-reason">Alasan: ${esc(entry.reason)}</span>`);
   }
+  if (entry.type === 'login' && entry.reason) {
+    parts.push(`<span class="detail-note">${esc(entry.reason)}</span>`);
+  }
   if (['approve_document', 'deactivate_user'].includes(entry.type) && entry.reason) {
     parts.push(`<span class="detail-reason">${esc(entry.reason)}</span>`);
   }

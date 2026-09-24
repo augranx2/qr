@@ -10,7 +10,8 @@
 //   PORTAL_URL           mis. https://portal.myrama.id
 //   PORTAL_REDIS_URL     = UPSTASH_REDIS_REST_URL milik project portal
 //   PORTAL_REDIS_TOKEN   = UPSTASH_REDIS_REST_TOKEN milik project portal
-//   SESSION_IDLE_MINUTES (opsional) sama dengan portal, bawaan 60
+//   SESSION_IDLE_MINUTES (opsional) sama dengan portal, bawaan 30 - disamakan dengan
+//                        batas diam 30 menit yang tercantum di protap dan dokumen OQ TTE
 //   COOKIE_DOMAIN        (opsional) bawaan .myrama.id
 // ===========================================================================
 const crypto = require("crypto");
@@ -78,7 +79,7 @@ async function redisCall(path) {
  * tidak ikut terputus walau tidak membuka portal.
  */
 async function perpanjangSesi(payload) {
-  const idle = Math.max(5, Number(process.env.SESSION_IDLE_MINUTES || 60)) * 60;
+  const idle = Math.max(5, Number(process.env.SESSION_IDLE_MINUTES || 30)) * 60;
   const sisa = payload.exp - Math.floor(Date.now() / 1000);
   const ttl = Math.max(1, Math.min(idle, sisa));
   const hasil = await redisCall(`expire/${encodeURIComponent(`portal:sess:${payload.sid}`)}/${ttl}`);
